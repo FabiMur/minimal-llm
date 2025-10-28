@@ -21,7 +21,7 @@ dependencies:
   - jupyterlab
   - jupytext           # Transform jnb to .py and vice versa for vcs
 
-  # --- Additional package manager ---
+  # --- Package manager ---
   - pip
   - pip:
       # --- Development and code quality ---
