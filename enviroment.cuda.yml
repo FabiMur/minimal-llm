@@ -1,0 +1,37 @@
+# Conda environment file (CUDA version)
+
+name: minimal-llm
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  # --- Base Python ---
+  - python=3.11
+
+  # --- Packages for scientific computing and Deep Learning ---
+  - numpy
+  - pytorch
+  - tqdm
+  - matplotlib
+  - ipykernel
+
+  # --- Jupyter and notebook environment ---
+  - jupyter
+  - notebook
+  - jupyterlab
+  - jupytext           # Transform jnb to .py and vice versa for vcs
+
+  # --- Package manager ---
+  - pip
+  - pip:
+      # --- Development and code quality ---
+      - black          # Code formatter (PEP8)
+      - ruff           # Linter
+      - mypy           # Static type checker
+      - pre-commit     # Hooks before commits
+      - pytest         # Testing
+      - rich           # Colorful logs and outputs
+
+      # --- Other tools ---
+      - wandb          # Web-based experiment tracking
+      - hydra-core     # Hyperparameter management with YML config files
