@@ -31,6 +31,7 @@ dependencies:
       - pre-commit     # Hooks before commits
       - pytest         # Testing
       - rich           # Colorful logs and outputs
+      - tokenizers    # HuggingFace tokenizers library
 
       # --- Other tools ---
       - wandb          # Web-based experiment tracking
