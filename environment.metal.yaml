@@ -24,15 +24,13 @@ dependencies:
   # --- Package manager ---
   - pip
   - pip:
-      # --- Development and code quality ---
       - black          # Code formatter (PEP8)
       - ruff           # Linter
       - mypy           # Static type checker
       - pre-commit     # Hooks before commits
       - pytest         # Testing
       - rich           # Colorful logs and outputs
-      - tokenizers    # HuggingFace tokenizers library
-
-      # --- Other tools ---
+      - tokenizers     # HuggingFace tokenizers library
+      - datasets       # HuggingFace datasets library
       - wandb          # Web-based experiment tracking
       - hydra-core     # Hyperparameter management with YML config files
