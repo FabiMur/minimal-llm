@@ -25,7 +25,7 @@ def main():
     )
 
     # Train tokenizer
-    tok.train(files=args.corpus, trainer=trainer)
+    tok.train(files=[args.corpus], trainer=trainer)
 
     # Post-processing to add special tokens
     tok.post_processor = ByteLevelProcessor(trim_offsets=False)
