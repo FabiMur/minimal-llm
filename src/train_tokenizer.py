@@ -7,8 +7,8 @@ from pathlib import Path
 import argparse
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--corpus", nargs="+", required=True)
+    ap = argparse.ArgumentParser(description="Train BPE tokenizer on corpus")
+    ap.add_argument("--corpus", required=True)
     ap.add_argument("--vocab_size", type=int, default=16000)
     ap.add_argument("--out", default="artifacts/tokenizer.json")
     args = ap.parse_args()
@@ -24,13 +24,13 @@ def main():
         special_tokens=["[PAD]","[UNK]","[BOS]","[EOS]"]
     )
 
-    # Train the tokenizer
+    # Train tokenizer
     tok.train(files=args.corpus, trainer=trainer)
 
     # Post-processing to add special tokens
     tok.post_processor = ByteLevelProcessor(trim_offsets=False)
 
-    # Save the trained tokenizer
+    # Save trained tokenizer
     tok.save(args.out)
     print(f"Saved tokenizer -> {args.out}")
 

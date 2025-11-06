@@ -23,8 +23,8 @@ def take_n(generator, n):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="data/mixed_corpus_en.txt")
-    ap.add_argument("--max_lines", type=int, default=30000)
+    ap.add_argument("--out", default="data/corpus.txt")
+    ap.add_argument("--max_lines", type=int, default=2_000_000)
     ap.add_argument("--ratio", default="4,4,2", help="wiki,web,stories")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
