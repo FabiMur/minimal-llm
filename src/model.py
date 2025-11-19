@@ -126,3 +126,46 @@ class MultiHeadAttention(nn.Module):
         out = self.resid_dropout(out)
         
         return out
+class FeedForward(nn.Module):
+    """Position-wise feed-forward network.
+    
+    This is applied independently to each position. It's a simple two-layer MLP
+    with a GELU activation in between. This component allows the model to process
+    the information gathered by attention, applying non-linear transformations 
+    that can capture complex patterns.
+
+    - Layer 1: Linear transformation from d_model to 4 * d_model
+    - Activation: GELU (Gaussian Error Linear Unit)
+    - Layer 2: Linear transformation back to d_model
+    - Dropout: Applied after the second linear layer to prevent overfitting
+
+    """
+    
+    def __init__(self, config: GPTConfig):
+        super().__init__()
+        # Standard practice: hidden dim is 4x the model dimension
+        hidden_dim = 4 * config.d_model
+        
+        self.fc1 = nn.Linear(config.d_model, hidden_dim)
+        self.act = nn.GELU()
+        self.fc2 = nn.Linear(hidden_dim, config.d_model)
+        self.dropout = nn.Dropout(config.dropout)
+    
+    def forward(self, x):
+        """Forward pass of feed-forward network.
+            Input: tensor of shape (batch_size, seq_len, d_model)
+            Output: tensor of shape (batch_size, seq_len, d_model)
+        """
+        # Expand to hidden dimension with GELU activation
+        x = self.fc1(x)
+
+        # Apply GELU activation (works better than ReLU for language models)
+        x = self.act(x)
+        
+        # Project back to model dimension
+        x = self.fc2(x)
+
+        # Apply dropout for regularization
+        x = self.dropout(x)
+        
+        return x
