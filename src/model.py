@@ -169,3 +169,39 @@ class FeedForward(nn.Module):
         x = self.dropout(x)
         
         return x
+    
+class TransformerBlock(nn.Module):
+    """A single transformer decoder block.
+    
+    This combines attention and feed-forward with layer normalization and residual connections.
+    The structure follows the modern Pre-LN version, which is more stable during training:
+    
+    x = x + Attention(LayerNorm(x))
+    x = x + FeedForward(LayerNorm(x))
+    
+    The residual connections (the + x part) help gradients flow during backpropagation.
+    """
+    
+    def __init__(self, config: GPTConfig):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(config.d_model)
+        self.attn = MultiHeadAttention(config)
+        self.ln2 = nn.LayerNorm(config.d_model)
+        self.ffn = FeedForward(config)
+    
+    def forward(self, x):
+        """Forward pass through the transformer block.
+        
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, d_model)
+            
+        Returns:
+            Output tensor of shape (batch_size, seq_len, d_model)
+        """
+        # Self-attention with residual connection
+        x = x + self.attn(self.ln1(x))
+        
+        # Feed-forward with residual connection
+        x = x + self.ffn(self.ln2(x))
+        
+        return x
