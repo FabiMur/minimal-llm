@@ -205,3 +205,61 @@ class TransformerBlock(nn.Module):
         x = x + self.ffn(self.ln2(x))
         
         return x
+
+class GPTModel(nn.Module):
+    """GPT Language Model.
+
+    The complete model that combines all components:
+    - Token embeddings
+    - Position embeddings
+    - Transformer blocks
+    - Output projection
+    """
+    
+    def __init__(self, config: GPTConfig):
+        super().__init__()
+        self.config = config
+        
+        # Token embeddings: vector representation for each token in vocabulary
+        self.token_embedding = nn.Embedding(config.vocab_size, config.d_model)
+        
+        # Position embeddings: vector representation for each position in the sequence
+        # Note: This is crucial because transformers have no inherent notion of order
+        self.position_embedding = nn.Embedding(config.context_length, config.d_model)
+
+        # Token embedding and position embedding values are learned during training
+        # Token embedding and position embedding are summed to form the input to the transformer blocks
+
+        # Dropout for regularization
+        self.dropout = nn.Dropout(config.dropout)
+        
+        # Stack of transformer blocks
+        self.blocks = nn.ModuleList([
+            TransformerBlock(config) for _ in range(config.n_layers)
+        ])
+        
+        # Normalization layer before output
+        self.ln_f = nn.LayerNorm(config.d_model)
+        
+        # Output projection to vocabulary
+        # This maps the final hidden states back to logits over the vocabulary
+        self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
+        
+        # Weight tying: share weights between token embeddings and output projection
+        # This reduces parameters and often improves performance
+        self.token_embedding.weight = self.lm_head.weight
+        
+        # Initialize weights with the chosen strategy
+        self.apply(self._init_weights)
+    
+    def _init_weights(self, module):
+        """Initialize weights following GPT-2 initialization scheme.
+        
+        Linear layers and embeddings are initialized from a normal distribution with mean 0 and std 0.02.
+        """
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
