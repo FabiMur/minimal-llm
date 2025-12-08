@@ -355,3 +355,11 @@ class GPTModel(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
         
         return idx
+
+    def count_parameters(self):
+        """Count the number of trainable parameters in the model.
+        
+        Returns:
+            Total number of trainable parameters
+        """
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
