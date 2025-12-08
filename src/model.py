@@ -313,3 +313,45 @@ class GPTModel(nn.Module):
             )
         
         return logits, loss
+    
+    def generate(self, idx, num_new_tokens, temperature=1.0, top_k=None):
+        """Generate new tokens
+        
+        This method is used for inference: given a prompt (idx), generate new tokens
+        one at a time by repeatedly sampling from the model's output distribution.
+        
+        Args:
+            idx: Input matrix of token IDs of shape (batch_size, seq_len)
+            max_new_tokens: Number of new tokens to generate
+            temperature: Sampling temperature (higher = more random, lower = more deterministic)
+            top_k: If set, only sample from the top k most likely tokens
+            
+        Returns:
+            Generated sequence of shape (batch_size, seq_len + num_new_tokens)
+        """
+        for _ in range(num_new_tokens):
+            # Crop context if it exceeds maximum context length
+            idx_cond = idx if idx.size(1) <= self.config.context_length else idx[:, -self.config.context_length:]
+            
+            # Get predictions for next token
+            logits, _ = self(idx_cond)
+            
+            # Focus only on the last position (next token prediction) and apply temperature
+            logits = logits[:, -1, :] / temperature
+            
+            # Optionally apply top-k filtering if specified
+            if top_k is not None:
+                # Zero all logits except the top k
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float('Inf')
+            
+            # Convert logits to probabilities
+            probs = F.softmax(logits, dim=-1)
+            
+            # Sample from the distribution
+            idx_next = torch.multinomial(probs, num_samples=1)
+            
+            # Append the new token to the sequence
+            idx = torch.cat((idx, idx_next), dim=1)
+        
+        return idx
