@@ -263,3 +263,53 @@ class GPTModel(nn.Module):
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    
+    def forward(self, idx, targets=None):
+        """Forward pass through the model.
+        
+        Args:
+            idx: Matrix of input token IDs of shape (batch_size, seq_len)
+            targets: Optional target token IDs for computing loss, same shape as idx
+            
+        Returns:
+            If targets is None: logits of shape (batch_size, seq_len, vocab_size)
+            If targets is provided: tuple of (logits, loss)
+        """
+        batch_size, seq_len = idx.shape
+        
+        # Transform token IDs to token embeddings
+        # Shape: (batch_size, seq_len, d_model)
+        token_emb = self.token_embedding(idx)
+        
+        # Get position embeddings for positions 0, 1, 2, ..., seq_len-1
+        # Shape: (seq_len, d_model)
+        pos = torch.arange(0, seq_len, dtype=torch.long, device=idx.device)
+        pos_emb = self.position_embedding(pos)
+        
+        # Add token and position embeddings
+        # Broadcasting handles adding pos_emb to each sequence in the batch
+        x = self.dropout(token_emb + pos_emb)
+        
+        # Pass through all transformer blocks
+        for block in self.blocks:
+            x = block(x)
+        
+        # Final layer norm
+        x = self.ln_f(x)
+        
+        # Project to vocabulary to get logits
+        # Shape: (batch_size, seq_len, vocab_size)
+        logits = self.lm_head(x)
+        
+        # Optionally compute loss if targets are provided
+        loss = None
+        if targets is not None:
+            # Reshape for cross entropy: it expects (N, C) where N is batch*seq_len
+            # and C is number of classes (vocab_size)
+            loss = F.cross_entropy(
+                logits.view(-1, logits.size(-1)),   # (batch_size * seq_len, vocab_size)
+                targets.view(-1),                   # (batch_size * seq_len)
+                ignore_index=-1                     # Ignore padding tokens
+            )
+        
+        return logits, loss
