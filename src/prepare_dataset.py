@@ -38,10 +38,10 @@ def main():
     n_web  = args.max_lines * r_web  // total_r
     n_st   = args.max_lines - n_wiki - n_web
 
-    print(f"Wikipedia: {n_wiki:,} lines");
-    print(f"Web: {n_web:,} lines");
-    print(f"Stories: {n_st:,} lines");
-    print("Loading datasets...");
+    print(f"Wikipedia: {n_wiki:,} lines")
+    print(f"Web: {n_web:,} lines")
+    print(f"Stories: {n_st:,} lines")
+    print("Loading datasets...")
 
     # Load streaming datasets
     wiki = load_dataset("wikitext", "wikitext-103-raw-v1",
