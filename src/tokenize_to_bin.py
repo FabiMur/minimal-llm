@@ -145,6 +145,8 @@ def main():
         "corpus": str(args.corpus),
         "vocab_size": vocab_size,
         "dtype": args.dtype,
+        "np_dtype": np.dtype(dtype).name,
+        "token_bytes": int(np.dtype(dtype).itemsize),
         "context_hint": None,
         "add_eos": bool(args.add_eos),
         "eos_id": eos_id,
