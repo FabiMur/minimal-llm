@@ -34,7 +34,7 @@ def main():
     ap.add_argument("--train_name", type=str, default="train.bin")
     ap.add_argument("--val_name", type=str, default="val.bin")
     ap.add_argument("--val_ratio", type=float, default=0.01)
-    ap.add_argument("--seed", type=int, default=1337, help="Seed for reproducible train/val split")
+    ap.add_argument("--seed", type=int, default=42, help="Seed for reproducible train/val split")
     ap.add_argument("--max_lines", type=int, default=None)
     ap.add_argument("--batch_lines", type=int, default=10_000)
     ap.add_argument("--dtype", type=str, choices=["uint16", "int32"], default="uint16")
