@@ -97,7 +97,7 @@ def main():
             else:
                 ids_to_write = ids
 
-            n = len(ids)
+            n = len(ids_to_write)
             total_tokens += n
 
             # Split per line
