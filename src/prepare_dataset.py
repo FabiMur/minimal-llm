@@ -9,7 +9,7 @@ def yield_text(ds, field="text"):
     for r in ds:
         t = r.get(field)
         if isinstance(t, str):
-            t = t.strip().replace("\n", " ")
+            t = " ".join(t.split())
             # Filter out very short lines (noise)
             if len(t) > 20:
                 yield t
