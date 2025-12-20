@@ -45,11 +45,16 @@ def main():
 
     # Load streaming datasets
     wiki = load_dataset("wikitext", "wikitext-103-raw-v1",
-                        split="train", streaming=True)
+                        split="train", streaming=True)    
     web  = load_dataset("HuggingFaceFW/fineweb",
                         name="sample-10BT", split="train", streaming=True)
     stories = load_dataset("roneneldan/TinyStories",
                            split="train", streaming=True)
+    
+    # Shuffle datasets
+    wiki = wiki.shuffle(buffer_size=100_000, seed=args.seed)
+    web = web.shuffle(buffer_size=100_000, seed=args.seed)
+    stories = stories.shuffle(buffer_size=10_000, seed=args.seed)
     
     print("Writing corpus...")
     wrote = 0
