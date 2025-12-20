@@ -93,17 +93,19 @@ def main():
 
             # Optional EOS per line
             if eos_id is not None:
-                ids = ids + [eos_id]
+                ids_to_write = ids + [eos_id]
+            else:
+                ids_to_write = ids
 
             n = len(ids)
             total_tokens += n
 
             # Split per line
             if rng.random() < args.val_ratio:
-                val_tokens += write_ids(val_f, ids, dtype)
+                val_tokens += write_ids(val_f, ids_to_write, dtype)
                 split_val_lines += 1
             else:
-                train_tokens += write_ids(train_f, ids, dtype)
+                train_tokens += write_ids(train_f, ids_to_write, dtype)
                 split_train_lines += 1
 
     batch = []
