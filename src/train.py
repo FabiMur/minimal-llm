@@ -167,3 +167,38 @@ def make_cosine_with_warmup(optimizer: torch.optim.Optimizer, warmup_steps: int,
         return 0.5 * (1.0 + math.cos(math.pi * progress))
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+def build_adamw_param_groups(model: torch.nn.Module, weight_decay: float):
+    """
+    Apply weight decay ONLY to "true weights" (e.g., Linear weights).
+    Avoid decaying biases and normalization/embedding params.
+
+    This is a common GPT training best-practice.
+    """
+
+    decay = []
+    no_decay = []
+
+    for name, p in model.named_parameters():
+
+        # skip frozen parameters
+        if not p.requires_grad:
+            continue
+
+        # no weight decay for biases
+        if name.endswith(".bias"):
+            no_decay.append(p)
+            continue
+
+        # no weight decay for normalization weights and embeddings
+        lname = name.lower()
+        if "norm" in lname or "ln" in lname or "embed" in lname or "embedding" in lname:
+            no_decay.append(p)
+            continue
+
+        decay.append(p)
+
+    return [
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
