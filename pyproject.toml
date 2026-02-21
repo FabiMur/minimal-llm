@@ -16,3 +16,15 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.15.2",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src"]
+exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
