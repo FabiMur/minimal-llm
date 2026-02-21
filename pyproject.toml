@@ -1,0 +1,10 @@
+[project]
+name = "minimal-llm"
+version = "0.1.0"
+description = "A personal implementation of an LLM built from scratch with Pytorch."
+readme = "README.md"
+authors = [
+    { name = "Fabián Murgado", email = "fabian@fabianmurgado.com" }
+]
+requires-python = ">=3.11,<3.13"
+dependencies = []
