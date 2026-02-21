@@ -1,0 +1,24 @@
+repos:
+  # Ruff (lint + format)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.2
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Pyright (type checking)
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.379
+    hooks:
+      - id: pyright
+
+  # Pytest (run tests)
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        types: [python]
