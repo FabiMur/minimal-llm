@@ -103,15 +103,15 @@ def build_corpus(
     wrote = 0
 
     with out_path.open("w", encoding="utf-8") as f:
-        for text in tqdm(elements=take_n(yield_text(wiki), n_wiki), total=n_wiki, desc="Wiki"):
+        for text in tqdm(take_n(yield_text(wiki), n_wiki), total=n_wiki, desc="Wiki"):
             f.write(text + "\n")
             wrote += 1
 
-        for text in tqdm(elements=take_n(yield_text(web), n_web), total=n_web, desc="Web"):
+        for text in tqdm(take_n(yield_text(web), n_web), total=n_web, desc="Web"):
             f.write(text + "\n")
             wrote += 1
 
-        for text in tqdm(elements=take_n(yield_text(stories), n_st), total=n_st, desc="Stories"):
+        for text in tqdm(take_n(yield_text(stories), n_st), total=n_st, desc="Stories"):
             f.write(text + "\n")
             wrote += 1
 
