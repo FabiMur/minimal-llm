@@ -7,7 +7,10 @@ authors = [
     { name = "Fabián Murgado", email = "fabian@fabianmurgado.com" }
 ]
 requires-python = ">=3.11,<3.13"
-dependencies = []
+dependencies = [
+    "datasets>=4.5.0",
+    "tqdm>=4.67.3",
+]
 
 [dependency-groups]
 dev = [
