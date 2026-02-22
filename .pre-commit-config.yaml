@@ -8,10 +8,13 @@ repos:
       - id: ruff-format
 
   # Pyright (type checking)
-  - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.379
+  - repo: local
     hooks:
       - id: pyright
+        name: pyright (uv)
+        entry: uv run pyright
+        language: system
+        types: [python]
 
   # Pytest (run tests)
   - repo: local
