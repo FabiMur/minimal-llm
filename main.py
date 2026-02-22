@@ -1,4 +1,7 @@
+"""Entry point for minimal-llm."""
+
 def main():
+    """Entry point for minimal-llm application."""
     print("Hello from minimal-llm!")
 
 
