@@ -67,9 +67,12 @@ def build_corpus(
       - FineWeb sample (HuggingFaceFW/fineweb, sample-10BT)
       - TinyStories (roneneldan/TinyStories)
 
+    Warning: Some datasets may have fewer lines than requested.
+    The function will attempt to fill any shortfall with Web lines.
+
     Args:
         out_path: Output file path where the corpus will be written.
-        max_lines: Maximum number of lines to write across all sources.
+        max_lines: Target number of lines to write across all sources.
         r_wiki: Ratio for Wikipedia lines.
         r_web: Ratio for Web lines.
         r_stories: Ratio for Stories lines.
@@ -114,6 +117,14 @@ def build_corpus(
         for text in tqdm(take_n(yield_text(stories), n_st), total=n_st, desc="Stories"):
             f.write(text + "\n")
             wrote += 1
+
+        # Fallback: if any source ran out early, fill the remainder with web
+        missing = max_lines - wrote
+        if missing > 0:
+            print(f"Filling missing lines with Web: {missing:,}")
+            for text in tqdm(take_n(yield_text(web), missing), total=missing, desc="Web (fill)"):
+                f.write(text + "\n")
+                wrote += 1
 
     file_size_gb = out_path.stat().st_size / (1024**3)
     print(f"Saved {wrote:,} lines ({file_size_gb:.2f} GB) -> {out_path}")
