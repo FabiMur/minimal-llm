@@ -143,9 +143,7 @@ def main() -> None:
 
     print(f"Tokenizer: {args.tokenizer} (vocab_size={vocab_size})")
     print(f"Corpus:    {args.corpus}")
-    print(
-        f"Output:    {train_path} / {val_path} " f"(dtype={args.dtype}, val_ratio={args.val_ratio}, seed={args.seed})"
-    )
+    print(f"Output:    {train_path} / {val_path} (dtype={args.dtype}, val_ratio={args.val_ratio}, seed={args.seed})")
 
     batch: list[str] = []
 
