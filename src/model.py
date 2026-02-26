@@ -21,6 +21,6 @@ class ModelConfig:
 
         Each attention head will manage d_model // n_heads dimensions.
         """
-        assert (
-            self.d_model % self.n_heads == 0
-        ), f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
+        assert self.d_model % self.n_heads == 0, (
+            f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
+        )
