@@ -91,3 +91,46 @@ class MultiHeadAttention(nn.Module):
         out = self.out_proj(out)
 
         return out
+
+
+class FeedForward(nn.Module):
+    """Position-wise feed-forward network (SwiGLU variant).
+
+    This module is applied independently to each position. Instead of the classic
+    two-layer MLP with GELU (as in the original Transformer), this version uses
+    a gated SwiGLU feed-forward network, similar to modern architectures like LLaMA.
+
+    Architecture:
+    - Up-projection: two parallel Linear layers expand d_model -> hidden_dim
+        * fc1 produces the "gate" vector (passed through SiLU)
+        * fc2 produces the "value" vector
+    - SwiGLU activation: SiLU(gate) * value
+        (gates the information in a learned, elementwise manner)
+    - Down-projection: Linear transformation hidden_dim -> d_model
+
+    This variant increases performance whithout a significant increase in parameters.
+    """
+
+    def __init__(self, config: ModelConfig):
+        """Initialize the feed-forward network."""
+        super().__init__()
+        # Standard practice: hidden dim is 4x the model dimension
+
+        # Reduced hidden_dim (like LLaMA): 4 * d_model * (2/3)
+        hidden_dim = int(4 * config.d_model * 2 / 3)
+
+        # SwiGLU components
+        self.fc1 = nn.Linear(config.d_model, hidden_dim, bias=False)  # gate
+        self.fc2 = nn.Linear(config.d_model, hidden_dim, bias=False)  # up-projection
+        self.fc3 = nn.Linear(hidden_dim, config.d_model, bias=False)  # down-projection
+
+    def forward(self, x):
+        """Forward pass of feed-forward network.
+
+        Input: tensor of shape (batch_size, seq_len, d_model)
+        Output: tensor of shape (batch_size, seq_len, d_model)
+        """
+        x = F.silu(self.fc1(x)) * self.fc2(x)  # SwiGLU
+        x = self.fc3(x)
+
+        return x
