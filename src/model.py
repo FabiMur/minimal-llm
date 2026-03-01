@@ -296,6 +296,9 @@ class TransformerLM(nn.Module):
         Returns:
             Generated sequence of shape (batch_size, seq_len + num_new_tokens)
         """
+        if temperature <= 0:
+            raise ValueError("Temperature must be greater than 0")
+
         for _ in range(num_new_tokens):
             # Crop context if it exceeds maximum context length
             idx_cond = idx if idx.size(1) <= self.config.context_length else idx[:, -self.config.context_length :]
