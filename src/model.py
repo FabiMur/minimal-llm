@@ -280,6 +280,7 @@ class TransformerLM(nn.Module):
 
         return logits, loss
 
+    @torch.inference_mode()
     def generate(self, idx, num_new_tokens, temperature=1.0, top_k=None):
         """Generate new tokens from the model given an initial prompt (idx).
 
