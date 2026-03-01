@@ -106,11 +106,12 @@ def build_corpus(
     wrote = 0
 
     with out_path.open("w", encoding="utf-8") as f:
+        web_iter = yield_text(web)
         for text in tqdm(take_n(yield_text(wiki), n_wiki), total=n_wiki, desc="Wiki"):
             f.write(text + "\n")
             wrote += 1
 
-        for text in tqdm(take_n(yield_text(web), n_web), total=n_web, desc="Web"):
+        for text in tqdm(take_n(web_iter, n_web), total=n_web, desc="Web"):
             f.write(text + "\n")
             wrote += 1
 
@@ -122,7 +123,7 @@ def build_corpus(
         missing = max_lines - wrote
         if missing > 0:
             print(f"Filling missing lines with Web: {missing:,}")
-            for text in tqdm(take_n(yield_text(web), missing), total=missing, desc="Web (fill)"):
+            for text in tqdm(take_n(web_iter, missing), total=missing, desc="Web (fill)"):
                 f.write(text + "\n")
                 wrote += 1
 
