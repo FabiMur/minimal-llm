@@ -126,7 +126,7 @@ class FeedForward(nn.Module):
         self.fc2 = nn.Linear(config.d_model, hidden_dim, bias=False)  # up-projection
         self.fc3 = nn.Linear(hidden_dim, config.d_model, bias=False)  # down-projection
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass of feed-forward network.
 
         Input: tensor of shape (batch_size, seq_len, d_model)
