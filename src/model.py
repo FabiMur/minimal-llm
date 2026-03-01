@@ -108,7 +108,7 @@ class FeedForward(nn.Module):
         (gates the information in a learned, elementwise manner)
     - Down-projection: Linear transformation hidden_dim -> d_model
 
-    This variant increases performance whithout a significant increase in parameters.
+    This variant increases performance without a significant increase in parameters.
     """
 
     def __init__(self, config: ModelConfig):
@@ -174,3 +174,158 @@ class TransformerBlock(nn.Module):
         x = x + self.ffn(self.ln2(x))
 
         return x
+
+
+class TransformerLM(nn.Module):
+    """Transformer Language Model (Decoder-only architecture).
+
+    The complete model that combines all components:
+    - Token embeddings
+    - Position embeddings
+    - Transformer blocks
+    - Output projection
+    """
+
+    def __init__(self, config: ModelConfig):
+        """Initialize the Transformer Language Model."""
+        super().__init__()
+        self.config = config
+
+        # Token embeddings: vector representation for each token in vocabulary
+        self.token_embedding = nn.Embedding(config.vocab_size, config.d_model)
+
+        # Position embeddings: vector representation for each position in the sequence
+        # Note: This is crucial because transformers have no inherent notion of order
+        self.position_embedding = nn.Embedding(config.context_length, config.d_model)
+
+        # Token embedding and position embedding values are learned during training
+        # Token embedding and position embedding are summed to form the input to the transformer blocks
+
+        # Stack of transformer blocks
+        self.blocks = nn.ModuleList([TransformerBlock(config) for _ in range(config.n_layers)])
+
+        # Normalization layer before output
+        self.ln_f = nn.LayerNorm(config.d_model)
+
+        # Output projection to vocabulary
+        # This maps the final hidden states back to logits over the vocabulary
+        self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
+
+        # Weight tying: share weights between token embeddings and output projection
+        # This reduces parameters and often improves performance
+        self.token_embedding.weight = self.lm_head.weight
+
+        # Initialize weights with the chosen strategy
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        """Initialize weights following GPT-2 initialization scheme.
+
+        Linear layers and embeddings are initialized from a normal distribution with mean 0 and std 0.02.
+        """
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    def forward(self, idx, targets=None):
+        """Forward pass through the model.
+
+        Args:
+            idx: Matrix of input token IDs of shape (batch_size, seq_len)
+            targets: Optional target token IDs for computing loss, same shape as idx
+
+        Returns:
+            logits: Unnormalized scores for each token in the vocabulary, shape (batch_size, seq_len, vocab_size)
+            loss: Cross-entropy loss if targets are provided, else None
+        """
+        batch_size, seq_len = idx.shape
+
+        # Transform token IDs to token embeddings
+        # Shape: (batch_size, seq_len, d_model)
+        token_emb = self.token_embedding(idx)
+
+        # Get position embeddings for positions 0, 1, 2, ..., seq_len-1
+        # Shape: (seq_len, d_model)
+        pos = torch.arange(0, seq_len, dtype=torch.long, device=idx.device)
+        pos_emb = self.position_embedding(pos)
+
+        # Add token and position embeddings
+        # Broadcasting handles adding pos_emb to each sequence in the batch
+        x = token_emb + pos_emb
+
+        # Pass through all transformer blocks
+        for block in self.blocks:
+            x = block(x)
+
+        # Final layer norm
+        x = self.ln_f(x)
+
+        # Project to vocabulary to get logits
+        # Shape: (batch_size, seq_len, vocab_size)
+        logits = self.lm_head(x)
+
+        # Optionally compute loss if targets are provided
+        loss = None
+        if targets is not None:
+            # Reshape for cross entropy: it expects (N, C) where N is batch*seq_len
+            # and C is number of classes (vocab_size)
+            loss = F.cross_entropy(
+                logits.view(-1, logits.size(-1)),  # (batch_size * seq_len, vocab_size)
+                targets.view(-1),  # (batch_size * seq_len)
+                ignore_index=-1,  # Ignore padding tokens
+            )
+
+        return logits, loss
+
+    def generate(self, idx, num_new_tokens, temperature=1.0, top_k=None):
+        """Generate new tokens from the model given an initial prompt (idx).
+
+        This method is used for inference: given a prompt (idx), generate new tokens
+        one at a time by repeatedly sampling from the model's output distribution.
+
+        Args:
+            idx: Input matrix of token IDs of shape (batch_size, seq_len)
+            num_new_tokens: Number of new tokens to generate
+            temperature: Sampling temperature (higher = more random, lower = more deterministic)
+            top_k: If set, only sample from the top k most likely tokens
+
+        Returns:
+            Generated sequence of shape (batch_size, seq_len + num_new_tokens)
+        """
+        for _ in range(num_new_tokens):
+            # Crop context if it exceeds maximum context length
+            idx_cond = idx if idx.size(1) <= self.config.context_length else idx[:, -self.config.context_length :]
+
+            # Get predictions for next token
+            logits, _ = self(idx_cond)
+
+            # Focus only on the last position (next token prediction) and apply temperature
+            logits = logits[:, -1, :] / temperature
+
+            # Optionally apply top-k filtering if specified
+            if top_k is not None:
+                # Mask out all tokens that are not in the top k threshold
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float("Inf")
+
+            # Convert logits to probabilities
+            probs = F.softmax(logits, dim=-1)
+
+            # Sample from the distribution
+            idx_next = torch.multinomial(probs, num_samples=1)
+
+            # Append the new token to the sequence
+            idx = torch.cat((idx, idx_next), dim=1)
+
+        return idx
+
+    def count_parameters(self):
+        """Count the number of trainable parameters in the model.
+
+        Returns:
+            Total number of trainable parameters
+        """
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
