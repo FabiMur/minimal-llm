@@ -76,7 +76,7 @@ class MultiHeadAttention(nn.Module):
 
         # Split into Q, K, V
         # Shape of each: (batch_size, n_heads, seq_len, head_dim)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = qkv.unbind(0)
 
         # Compute scaled dot-product attention with causal masking
         # This efficiently computes: softmax(QK^T / sqrt(d_k)) V
