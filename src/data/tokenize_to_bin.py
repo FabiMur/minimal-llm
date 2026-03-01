@@ -179,10 +179,11 @@ def main() -> None:
                 break
 
             line = line.strip()
-            total_lines += 1
 
             if not line:
                 continue
+
+            total_lines += 1
 
             batch.append(line)
 
