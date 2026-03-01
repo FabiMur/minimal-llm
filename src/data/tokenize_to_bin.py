@@ -44,6 +44,7 @@ def flush_encoded(
     val_ratio: float,
     dtype: type[np.uint16] | type[np.int32],
     eos_id: int | None,
+    bos_id: int | None = None,
 ) -> tuple[int, int, int, int, int]:
     """Write encoded sequences to train/validation splits.
 
@@ -55,6 +56,7 @@ def flush_encoded(
         val_ratio: Probability of assigning a line to validation.
         dtype: NumPy dtype for storage.
         eos_id: Optional EOS token ID.
+        bos_id: Optional BOS token ID.
 
     Returns:
         Tuple containing:
@@ -75,7 +77,7 @@ def flush_encoded(
         if not ids:
             continue
 
-        ids_to_write = ids + [eos_id] if eos_id is not None else ids
+        ids_to_write = ([bos_id] if bos_id is not None else []) + ids + ([eos_id] if eos_id is not None else [])
         total_tokens += len(ids_to_write)
 
         if rng.random() < val_ratio:
@@ -133,6 +135,10 @@ def main() -> None:
     eos_id = tok.token_to_id("[EOS]") if args.add_eos else None
     if args.add_eos and eos_id is None:
         raise ValueError("Passed --add_eos but tokenizer has no [EOS] token.")
+
+    bos_id = tok.token_to_id("[BOS]") if args.add_eos else None
+    if args.add_eos and bos_id is None:
+        raise ValueError("Passed --add_eos but tokenizer has no [BOS] token.")
 
     total_lines = 0
     total_tokens = 0
@@ -192,6 +198,7 @@ def main() -> None:
                     args.val_ratio,
                     dtype,
                     eos_id,
+                    bos_id,
                 )
 
                 total_tokens += dt
@@ -210,6 +217,7 @@ def main() -> None:
                 val_ratio=args.val_ratio,
                 dtype=dtype,
                 eos_id=eos_id,
+                bos_id=bos_id,
             )
 
             total_tokens += dt
