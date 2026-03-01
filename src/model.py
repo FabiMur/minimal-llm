@@ -118,6 +118,8 @@ class FeedForward(nn.Module):
 
         # Reduced hidden_dim (like LLaMA): 4 * d_model * (2/3)
         hidden_dim = int(4 * config.d_model * 2 / 3)
+        # Round up to the nearest multiple of 256 for better GPU efficiency
+        hidden_dim = 256 * ((hidden_dim + 255) // 256)
 
         # SwiGLU components
         self.fc1 = nn.Linear(config.d_model, hidden_dim, bias=False)  # gate
