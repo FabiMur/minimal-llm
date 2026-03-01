@@ -107,7 +107,7 @@ def main() -> None:
     ap.add_argument("--max_lines", type=int, default=None)
     ap.add_argument("--batch_lines", type=int, default=10_000)
     ap.add_argument("--dtype", type=str, choices=["uint16", "int32"], default="uint16")
-    ap.add_argument("--add_eos", action="store_true", default=True)
+    ap.add_argument("--add_eos", action=argparse.BooleanOptionalAction, default=True)  # --add_eos / --no-add_eos flag
     args = ap.parse_args()
 
     if not (0.0 <= args.val_ratio <= 1.0):
@@ -237,6 +237,7 @@ def main() -> None:
         "token_bytes": int(np.dtype(dtype).itemsize),
         "add_eos": bool(args.add_eos),
         "eos_id": eos_id,
+        "bos_id": bos_id,
         "val_ratio": args.val_ratio,
         "seed": args.seed,
         "train_lines": int(split_train_lines),
