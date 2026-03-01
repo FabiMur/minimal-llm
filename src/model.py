@@ -83,7 +83,7 @@ class MultiHeadAttention(nn.Module):
         # The is_causal=True flag ensures tokens only attend to previous
         # positions by applying a mask to the attention scores.
         # Shape: (batch_size, n_heads, seq_len, head_dim)
-        out = F.scaled_dot_product_attention(q, k, v, attn_mask=None, is_causal=True)
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
 
         # Concatenate heads, and project to output
         # Shape: (batch_size, seq_len, d_model)
