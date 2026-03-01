@@ -211,12 +211,12 @@ class TransformerLM(nn.Module):
         # This maps the final hidden states back to logits over the vocabulary
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
 
+        # Initialize weights with the chosen strategy
+        self.apply(self._init_weights)
+
         # Weight tying: share weights between token embeddings and output projection
         # This reduces parameters and often improves performance
         self.token_embedding.weight = self.lm_head.weight
-
-        # Initialize weights with the chosen strategy
-        self.apply(self._init_weights)
 
     def _init_weights(self, module):
         """Initialize weights following GPT-2 initialization scheme.
