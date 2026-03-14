@@ -247,6 +247,11 @@ class TransformerLM(nn.Module):
         # Shape: (batch_size, seq_len, d_model)
         token_emb = self.token_embedding(idx)
 
+        if seq_len > self.config.context_length:
+            raise ValueError(
+                f"Input sequence length ({seq_len}) exceeds model's context length ({self.config.context_length})"
+            )
+
         # Get position embeddings for positions 0, 1, 2, ..., seq_len-1
         # Shape: (seq_len, d_model)
         pos = torch.arange(0, seq_len, dtype=torch.long, device=idx.device)
