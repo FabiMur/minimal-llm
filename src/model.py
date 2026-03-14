@@ -218,7 +218,7 @@ class TransformerLM(nn.Module):
         # This reduces parameters and often improves performance
         self.lm_head.weight = self.token_embedding.weight
 
-    def _init_weights(self, module):
+    def _init_weights(self, module: nn.Module):
         """Initialize weights following GPT-2 initialization scheme.
 
         Linear layers and embeddings are initialized from a normal distribution with mean 0 and std 0.02.
@@ -230,7 +230,9 @@ class TransformerLM(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx, targets=None):
+    def forward(
+        self, idx: torch.Tensor, targets: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Forward pass through the model.
 
         Args:
@@ -286,7 +288,9 @@ class TransformerLM(nn.Module):
         return logits, loss
 
     @torch.inference_mode()
-    def generate(self, idx, num_new_tokens, temperature=1.0, top_k=None):
+    def generate(
+        self, idx: torch.Tensor, num_new_tokens: int, temperature: float = 1.0, top_k: int | None = None
+    ) -> torch.Tensor:
         """Generate new tokens from the model given an initial prompt (idx).
 
         This method is used for inference: given a prompt (idx), generate new tokens
@@ -331,7 +335,7 @@ class TransformerLM(nn.Module):
 
         return idx
 
-    def count_parameters(self):
+    def count_parameters(self) -> int:
         """Count the number of trainable parameters in the model.
 
         Returns:
