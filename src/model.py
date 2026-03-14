@@ -216,7 +216,7 @@ class TransformerLM(nn.Module):
 
         # Weight tying: share weights between token embeddings and output projection
         # This reduces parameters and often improves performance
-        self.token_embedding.weight = self.lm_head.weight
+        self.lm_head.weight = self.token_embedding.weight
 
     def _init_weights(self, module):
         """Initialize weights following GPT-2 initialization scheme.
