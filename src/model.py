@@ -275,7 +275,7 @@ class TransformerLM(nn.Module):
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),  # (batch_size * seq_len, vocab_size)
                 targets.view(-1),  # (batch_size * seq_len)
-                ignore_index=-1,  # Ignore padding tokens
+                ignore_index=-1,  # Ignore padding tokens, marked with -1 in targets
             )
 
         return logits, loss
