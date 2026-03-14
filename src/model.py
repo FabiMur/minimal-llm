@@ -144,8 +144,8 @@ class TransformerBlock(nn.Module):
     This combines attention and feed-forward with layer normalization and residual connections.
     The structure follows the modern Pre-LN version, which is more stable during training:
 
-    x = x + Attention(LayerNorm(x))
-    x = x + FeedForward(LayerNorm(x))
+    x = x + Attention(RMSNorm(x))
+    x = x + FeedForward(RMSNorm(x))
 
     The residual connections (the + x part) help gradients flow during backpropagation.
     """
@@ -153,9 +153,9 @@ class TransformerBlock(nn.Module):
     def __init__(self, config: ModelConfig):
         """Initialize the transformer block."""
         super().__init__()
-        self.ln1 = nn.LayerNorm(config.d_model)
+        self.ln1 = nn.RMSNorm(config.d_model)
         self.attn = MultiHeadAttention(config)
-        self.ln2 = nn.LayerNorm(config.d_model)
+        self.ln2 = nn.RMSNorm(config.d_model)
         self.ffn = FeedForward(config)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -205,7 +205,7 @@ class TransformerLM(nn.Module):
         self.blocks = nn.ModuleList([TransformerBlock(config) for _ in range(config.n_layers)])
 
         # Normalization layer before output
-        self.ln_f = nn.LayerNorm(config.d_model)
+        self.ln_f = nn.RMSNorm(config.d_model)
 
         # Output projection to vocabulary
         # This maps the final hidden states back to logits over the vocabulary
