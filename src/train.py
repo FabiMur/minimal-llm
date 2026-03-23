@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 from torch.cuda.amp import GradScaler
-from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.lr_scheduler import LRScheduler
 
 
 def set_seed(seed: int) -> None:
@@ -27,7 +27,7 @@ def save_checkpoint(
     ckpt_path: Path,
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    scheduler: _LRScheduler | None,
+    scheduler: LRScheduler | None,
     scaler: GradScaler | None,
     step: int,
     args: argparse.Namespace,
@@ -54,7 +54,7 @@ def load_checkpoint(
     ckpt_path: Path,
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    scheduler: _LRScheduler | None,
+    scheduler: LRScheduler | None,
     scaler: GradScaler | None,
     device: torch.device,
 ) -> int:
