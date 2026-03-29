@@ -153,7 +153,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         Parsed arguments namespace.
     """
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="data/corpus.txt", help="Output corpus file path.")
+    ap.add_argument("--out", default="artifacts/corpus.txt", help="Output corpus file path.")
     ap.add_argument("--max_lines", type=int, default=15_000_000, help="Max lines to write.")
     ap.add_argument("--ratio-wiki", type=int, default=1, help="Wiki ratio (e.g. 2).")
     ap.add_argument("--ratio-fine-web", type=int, default=2, help="FineWeb ratio (e.g. 2).")
