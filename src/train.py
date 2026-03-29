@@ -1,6 +1,7 @@
 """Language model training loop."""
 
 import argparse
+import math
 from pathlib import Path
 from typing import Any
 
@@ -95,3 +96,34 @@ def build_adamw_param_groups(model: torch.nn.Module, weight_decay: float) -> lis
         {"params": decay, "weight_decay": weight_decay},
         {"params": no_decay, "weight_decay": 0.0},
     ]
+
+
+def create_cosine_lr_scheduler(
+    optimizer: torch.optim.Optimizer,
+    warmup_steps: int,
+    max_steps: int,
+    min_lr_ratio: float = 0.1,
+) -> LRScheduler:
+    """Create a cosine LR scheduler with linear warmup.
+
+    During warmup: LR scale increases linearly from 0 to 1 over warmup_steps steps.
+    After warmup: LR scale decays following a cosine curve down to min_lr_ratio.
+
+    Args:
+        optimizer: The optimizer whose LR will be scheduled.
+        warmup_steps: Number of steps for linear warmup.
+        max_steps: Total number of training steps.
+        min_lr_ratio: Final LR scale as a fraction of the base LR. Defaults to 0.1.
+
+    Returns:
+        A LambdaLR scheduler.
+    """
+
+    def lr_cosine_lambda(step: int) -> float:
+        if step < warmup_steps:
+            return step / max(warmup_steps, 1)
+        progress = (step - warmup_steps) / max(max_steps - warmup_steps, 1)
+        cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+        return min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_cosine_lambda)
