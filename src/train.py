@@ -2,6 +2,7 @@
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 import torch
 from torch.cuda.amp import GradScaler
@@ -33,10 +34,8 @@ def save_checkpoint(
     args: argparse.Namespace,
 ) -> None:
     """Save training checkpoint to file."""
-    # Ensure directory exists
     ckpt_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create checkpoint payload
     payload = {
         "step": step,
         "model": model.state_dict(),
@@ -46,7 +45,6 @@ def save_checkpoint(
         "args": vars(args),
     }
 
-    # Save to file
     torch.save(payload, ckpt_path)
 
 
@@ -62,10 +60,8 @@ def load_checkpoint(
 
     Returns the training step to continue from.
     """
-    # Load checkpoint
     ckpt = torch.load(ckpt_path, map_location=device)
 
-    # Load checkpoint states into model, optimizer, scheduler and scaler
     model.load_state_dict(ckpt["model"])
 
     optimizer.load_state_dict(ckpt["optimizer"])
@@ -77,3 +73,25 @@ def load_checkpoint(
         scaler.load_state_dict(ckpt["scaler"])
 
     return int(ckpt.get("step", 0))
+
+
+def build_adamw_param_groups(model: torch.nn.Module, weight_decay: float) -> list[dict[str, Any]]:
+    """Split parameters into weight-decay and no-weight-decay groups.
+
+    Applies weight decay only to "true weights" (Linear weights).
+    Biases, normalization, and embedding parameters are excluded.
+    """
+    decay: list[torch.nn.Parameter] = []
+    no_decay: list[torch.nn.Parameter] = []
+
+    for name, p in model.named_parameters():
+        if "norm" in name or "ln" in name or "embed" in name or "embedding" in name or "bias" in name:
+            no_decay.append(p)
+            continue
+
+        decay.append(p)
+
+    return [
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
