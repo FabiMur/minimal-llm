@@ -13,7 +13,7 @@ from tokenizers.trainers import BpeTrainer
 def main() -> None:
     """Train a BPE tokenizer on the given corpus file."""
     ap = argparse.ArgumentParser(description="Train BPE tokenizer on corpus")
-    ap.add_argument("--corpus", default="data/corpus.txt", help="Path to input corpus file")
+    ap.add_argument("--corpus", default="artifacts/corpus.txt", help="Path to input corpus file")
     ap.add_argument("--vocab_size", type=int, default=32_000, help="Vocabulary size for the tokenizer")
     ap.add_argument("--out", default="artifacts/tokenizer.json", help="Path to save trained tokenizer")
     ap.add_argument("--min_frequency", type=int, default=5, help="Minimum token frequency")
