@@ -1,0 +1,104 @@
+# ============================================================================
+# Created by https://dockerignore.com/
+# LANGUAGE TEMPLATE for Python
+# Website: https://www.python.org/
+# Repository: https://github.com/python/cpython
+# ============================================================================
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TEMPLATE OVERVIEW & USAGE NOTES
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# • TEMPLATE TYPE: Language Template
+# • PURPOSE: Python-specific patterns for Docker builds
+# • DESIGN PHILOSOPHY: Contains only Python language artifacts (no security patterns)
+# • COMBINATION GUIDANCE: Combine with common templates for complete coverage
+# • SECURITY CONSIDERATIONS: Security patterns not included (use common/security.dockerignore)
+# • BEST PRACTICES: Always combine with security template for production use
+# • OFFICIAL SOURCES: Python community patterns and Docker best practices
+
+# ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+# PYTHON-SPECIFIC PATTERNS
+# ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+# Python-specific files and directories
+
+*$py.class
+**/.cover/
+**/.eggs/
+**/.hatch/
+**/.hypothesis/
+**/.instance/
+**/.mypy_cache/
+**/.nose/
+**/.nox/
+**/.profile_default/
+**/.pybuilder/
+**/.pyenv/
+**/.pypackages/
+**/.pyre/
+**/.pytest_cache/
+**/.pytype/
+**/.ruff_cache/
+**/.tox/
+**/.uv/
+**/.venv/
+**/__pycache__/
+**/__pypackages__/
+**/cover/
+**/cython_debug/
+**/develop-eggs/
+**/downloads/
+**/eggs/
+**/env.bak/
+**/ENV/
+**/env/
+**/lib/
+**/lib64/
+**/parts/
+**/share/python-wheels/
+**/var/
+**/venv.bak/
+**/venv/
+**/virtualenv/
+**/wheels/
+
+# ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+# PYTHON PACKAGE MANAGER FILES
+# ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+# Python package manager files and dependency directories
+
+*.egg
+*.egg-info/
+*.manifest
+*.mo
+*.pot
+*.py,cover
+*.py[cod]
+*.sage.py
+*.spec
+.dmypy.json
+.installed.cfg
+.ipynb_checkpoints
+.nosetests.xml
+.pdm.toml
+.Python
+.python-version
+.scrapy
+.webassets-cache
+celerybeat-schedule
+celerybeat.pid
+MANIFEST
+pip-delete-this-directory.txt
+pip-log.txt
+
+# ============================================================================
+# Project-specific exclusions (mounted as volumes at runtime)
+# ============================================================================
+.git
+data/
+artifacts/
+tests/
+docs/
+notes.md
+.pre-commit-config.yaml
+dist/
+build/
