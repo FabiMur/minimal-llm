@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from torch.cuda.amp import GradScaler
 from torch.optim.lr_scheduler import LRScheduler
 
 
@@ -30,7 +29,6 @@ def save_checkpoint(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     scheduler: LRScheduler | None,
-    scaler: GradScaler | None,
     step: int,
     args: argparse.Namespace,
 ) -> None:
@@ -42,7 +40,6 @@ def save_checkpoint(
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict() if scheduler is not None else None,
-        "scaler": scaler.state_dict() if scaler is not None else None,
         "args": vars(args),
     }
 
@@ -54,24 +51,20 @@ def load_checkpoint(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     scheduler: LRScheduler | None,
-    scaler: GradScaler | None,
     device: torch.device,
 ) -> int:
     """Load training checkpoint from file.
 
-    Returns the training step to continue from.
+    Returns:
+        The training step to resume from.
     """
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
 
     model.load_state_dict(ckpt["model"])
-
     optimizer.load_state_dict(ckpt["optimizer"])
 
     if scheduler is not None and ckpt.get("scheduler") is not None:
         scheduler.load_state_dict(ckpt["scheduler"])
-
-    if scaler is not None and ckpt.get("scaler") is not None:
-        scaler.load_state_dict(ckpt["scaler"])
 
     return int(ckpt.get("step", 0))
 
