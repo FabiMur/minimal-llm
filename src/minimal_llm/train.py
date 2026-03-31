@@ -1,12 +1,14 @@
 """Language model training loop."""
 
 import argparse
+import contextlib
 import math
 from pathlib import Path
 from typing import Any
 
 import torch
 from torch.optim.lr_scheduler import LRScheduler
+from torch.utils.data import DataLoader
 
 
 def set_seed(seed: int) -> None:
@@ -120,3 +122,42 @@ def create_cosine_lr_scheduler(
         return min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay
 
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_cosine_lambda)
+
+
+@torch.inference_mode()
+def evaluate(
+    model: torch.nn.Module,
+    val_loader: DataLoader,
+    device: torch.device,
+    max_batches: int = 50,
+) -> float:
+    """Compute average validation loss over a number of batches.
+
+    Args:
+        model: The model to evaluate.
+        val_loader: Validation DataLoader.
+        device: Device to run evaluation on.
+        max_batches: Maximum number of batches to evaluate.
+
+    Returns:
+        Average loss(cross-entropy) over the evaluated batches.
+    """
+    model.eval()
+    autocast_ctx = (
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16) if device.type == "cuda" else contextlib.nullcontext()
+    )
+
+    total_loss = 0.0
+    n_batches = 0
+
+    for x, y in val_loader:
+        if n_batches >= max_batches:
+            break
+        x, y = x.to(device), y.to(device)
+        with autocast_ctx:
+            _, loss = model(x, y)
+        total_loss += loss.item()
+        n_batches += 1
+
+    model.train()
+    return total_loss / max(n_batches, 1)
