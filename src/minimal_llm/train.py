@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import math
+import time
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,10 @@ from typing import Any
 import torch
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from minimal_llm.data.data_loaders import create_bin_dataloaders
+from minimal_llm.model import ModelConfig, TransformerLM
 
 
 def set_seed(seed: int) -> None:
@@ -200,3 +205,115 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n_heads", type=int, default=16)
 
     return parser.parse_args()
+
+
+def main() -> None:
+    """Run training loop."""
+    args = parse_args()
+    set_seed(args.seed)
+    device = get_device()
+
+    print(f"Device: {device}")
+
+    # Model
+    config = ModelConfig(
+        vocab_size=args.vocab_size,
+        context_length=args.context_length,
+        d_model=args.d_model,
+        n_layers=args.n_layers,
+        n_heads=args.n_heads,
+    )
+    model = TransformerLM(config).to(device)
+    print(f"Parameters: {model.count_parameters() / 1e6:.1f}M")
+
+    # Optimizer & scheduler
+    param_groups = build_adamw_param_groups(model, args.weight_decay)
+    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))  # Use standard LLM beta values
+    scheduler = create_cosine_lr_scheduler(optimizer, args.warmup_steps, args.max_steps, args.min_lr_ratio)
+
+    # Resume from checkpoint
+    start_step = 0
+    if args.resume is not None:
+        start_step = load_checkpoint(args.resume, model, optimizer, scheduler, device)
+        print(f"Resumed from step {start_step}")
+
+    # Data
+    train_loader, val_loader = create_bin_dataloaders(
+        args.meta,
+        context_length=args.context_length,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=(device.type == "cuda"),
+    )
+
+    # Mixed precision: bfloat16 on CUDA, disabled on MPS/CPU
+    autocast_ctx = (
+        torch.autocast(device_type="cuda", dtype=torch.bfloat16) if device.type == "cuda" else contextlib.nullcontext()
+    )
+
+    ckpt_dir = args.out_dir / args.run_name
+    best_val_loss = float("inf")
+    train_iter = iter(train_loader)
+
+    model.train()
+    t0 = time.perf_counter()
+
+    pbar = tqdm(range(start_step, args.max_steps), initial=start_step, total=args.max_steps, desc=args.run_name)
+
+    # --- Training loop ---
+    for step in pbar:
+        optimizer.zero_grad()
+        loss_accum = 0.0
+
+        for _ in range(args.grad_accum_steps):
+            try:
+                x, y = next(train_iter)
+            except StopIteration:
+                train_iter = iter(train_loader)
+                x, y = next(train_iter)
+
+            x, y = x.to(device), y.to(device)
+
+            with autocast_ctx:
+                _, loss = model(x, y)
+
+            (loss / args.grad_accum_steps).backward()
+            loss_accum += loss.item()
+
+        if args.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+
+        optimizer.step()
+        scheduler.step()
+
+        # Logging
+        if (step + 1) % args.log_interval == 0:
+            t1 = time.perf_counter()
+            ms_per_step = (t1 - t0) / args.log_interval * 1000
+            t0 = t1
+            lr = scheduler.get_last_lr()[0]
+            avg_loss = loss_accum / args.grad_accum_steps
+            pbar.set_postfix(loss=f"{avg_loss:.4f}", lr=f"{lr:.2e}", ms=f"{ms_per_step:.0f}")
+
+        # Validation
+        if (step + 1) % args.eval_interval == 0:
+            val_loss = evaluate(model, val_loader, device, max_batches=args.eval_batches)
+            tqdm.write(f"  step {step + 1} | val loss: {val_loss:.4f}")
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                save_checkpoint(ckpt_dir / "best.pt", model, optimizer, scheduler, step + 1, args)
+                tqdm.write(f"  saved best checkpoint (val loss {best_val_loss:.4f})")
+
+        # Periodic checkpoint
+        if (step + 1) % args.save_interval == 0:
+            save_checkpoint(ckpt_dir / "latest.pt", model, optimizer, scheduler, step + 1, args)
+            tqdm.write(f"  saved checkpoint at step {step + 1}")
+
+    # Final checkpoint
+    save_checkpoint(ckpt_dir / "latest.pt", model, optimizer, scheduler, args.max_steps, args)
+    print(f"Training complete. Checkpoints saved to {ckpt_dir}")
+
+
+if __name__ == "__main__":
+    main()
