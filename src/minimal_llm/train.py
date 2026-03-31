@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import math
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -161,3 +162,41 @@ def evaluate(
 
     model.train()
     return total_loss / max(n_batches, 1)
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for training."""
+    parser = argparse.ArgumentParser(description="Train a minimal transformer language model.")
+
+    # IO
+    parser.add_argument("--run_name", type=str, default=str(date.today().isoformat()), help="Training run name")
+    parser.add_argument("--meta", type=Path, default=Path("artifacts/meta.json"), help="Path to meta.json.")
+    parser.add_argument("--out_dir", type=Path, default=Path("artifacts/checkpoints"), help="Dir to save checkpoints.")
+    parser.add_argument("--resume", type=Path, default=None, help="Path to checkpoint to resume from.")
+
+    # Training hyperparameters
+    parser.add_argument("--max_steps", type=int, default=10000)
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--grad_accum_steps", type=int, default=1)
+    parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--weight_decay", type=float, default=0.1)
+    parser.add_argument("--warmup_steps", type=int, default=500)
+    parser.add_argument("--min_lr_ratio", type=float, default=0.1)
+    parser.add_argument("--grad_clip", type=float, default=1.0)
+    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=42)
+
+    # Evaluation and logging
+    parser.add_argument("--log_interval", type=int, default=10, help="Log loss every N steps.")
+    parser.add_argument("--eval_interval", type=int, default=500, help="Run validation every N steps.")
+    parser.add_argument("--eval_batches", type=int, default=50, help="Max batches per validation run.")
+    parser.add_argument("--save_interval", type=int, default=1000, help="Save checkpoint every N steps.")
+
+    # Model hyperparameters
+    parser.add_argument("--vocab_size", type=int, default=32000)
+    parser.add_argument("--context_length", type=int, default=1024)
+    parser.add_argument("--d_model", type=int, default=1024)
+    parser.add_argument("--n_layers", type=int, default=16)
+    parser.add_argument("--n_heads", type=int, default=16)
+
+    return parser.parse_args()
