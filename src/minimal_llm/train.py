@@ -237,6 +237,8 @@ def main() -> None:
         start_step = load_checkpoint(args.resume, model, optimizer, scheduler, device)
         print(f"Resumed from step {start_step}")
 
+    compiled_model = torch.compile(model)
+
     # Data
     train_loader, val_loader = create_bin_dataloaders(
         args.meta,
@@ -275,7 +277,7 @@ def main() -> None:
             x, y = x.to(device), y.to(device)
 
             with autocast_ctx:
-                _, loss = model(x, y)
+                _, loss = compiled_model(x, y)
 
             (loss / args.grad_accum_steps).backward()
             loss_accum += loss.item()
