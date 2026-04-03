@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.utils.checkpoint import checkpoint as grad_ckpt
 
 
 @dataclass
@@ -322,10 +323,11 @@ class TransformerLM(nn.Module):
     - Output projection
     """
 
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: ModelConfig, grad_checkpoint: bool = False):
         """Initialize the Transformer Language Model."""
         super().__init__()
         self.config = config
+        self.grad_checkpoint = grad_checkpoint
 
         # Token embeddings: vector representation for each token in vocabulary
         self.token_embedding = nn.Embedding(config.vocab_size, config.d_model)
@@ -412,7 +414,11 @@ class TransformerLM(nn.Module):
 
         # Pass through all transformer blocks
         for i, block in enumerate(self.blocks):
-            x = block(x, cos, sin, kv_caches[i] if kv_caches is not None else None)
+            kv_cache = kv_caches[i] if kv_caches is not None else None
+            if self.grad_checkpoint and kv_cache is None:
+                x = grad_ckpt(block, x, cos, sin, None, use_reentrant=False)
+            else:
+                x = block(x, cos, sin, kv_cache)
 
         # Final layer norm
         x = self.ln_f(x)

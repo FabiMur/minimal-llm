@@ -190,6 +190,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--no_compile", action="store_true", help="Disable torch.compile.")
+    parser.add_argument("--grad_checkpoint", action="store_true", help="Enable gradient checkpointing")
 
     # Evaluation and logging
     parser.add_argument("--log_interval", type=int, default=10, help="Log loss every N steps.")
@@ -223,7 +225,7 @@ def main() -> None:
         n_layers=args.n_layers,
         n_heads=args.n_heads,
     )
-    model = TransformerLM(config).to(device)
+    model = TransformerLM(config, grad_checkpoint=args.grad_checkpoint).to(device)
     print(f"Parameters: {model.count_parameters() / 1e6:.1f}M")
 
     # Optimizer & scheduler
@@ -237,7 +239,7 @@ def main() -> None:
         start_step = load_checkpoint(args.resume, model, optimizer, scheduler, device)
         print(f"Resumed from step {start_step}")
 
-    compiled_model = torch.compile(model)
+    compiled_model = model if args.no_compile else torch.compile(model)
 
     # Data
     train_loader, val_loader = create_bin_dataloaders(
