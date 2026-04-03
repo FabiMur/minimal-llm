@@ -14,7 +14,7 @@ A decoder-only transformer language model built from scratch in PyTorch, inspire
 
 ## Architecture
 
-~239M parameter model with the following design:
+~393M parameter model with the following design:
 
 | Component | Choice |
 |---|---|
@@ -42,7 +42,7 @@ A decoder-only transformer language model built from scratch in PyTorch, inspire
 - [LLaMA: Open and Efficient Foundation Language Models](https://arxiv.org/abs/2302.13971) — Touvron et al., 2023
 - [Training Compute-Optimal Large Language Models](https://arxiv.org/abs/2203.15556) (Chinchilla) — Hoffmann et al., 2022
 
-**Default config:** `vocab_size=32000`, `context_length=1024`, `d_model=1024`, `n_layers=16`, `n_heads=16`, `n_kv_heads=4`
+**Default config:** `vocab_size=32000`, `context_length=1024`, `d_model=1024`, `n_layers=32`, `n_heads=16`, `n_kv_heads=4`
 
 ## Setup
 

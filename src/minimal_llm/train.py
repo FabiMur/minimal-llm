@@ -201,7 +201,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vocab_size", type=int, default=32000)
     parser.add_argument("--context_length", type=int, default=1024)
     parser.add_argument("--d_model", type=int, default=1024)
-    parser.add_argument("--n_layers", type=int, default=16)
+    parser.add_argument("--n_layers", type=int, default=32)
     parser.add_argument("--n_heads", type=int, default=16)
 
     return parser.parse_args()
