@@ -19,6 +19,7 @@ class ModelConfig:
     d_model: int = 1024  # Dimensionality of token embeddings and model hidden states
     n_layers: int = 16  # Number of transformer blocks to stack
     n_heads: int = 16  # Number of attention heads per block
+    rope_theta: float = 10000.0  # Base frequency for RoPE
 
     def __post_init__(self):
         """Validate that d_model is divisible by n_heads.
@@ -28,6 +29,72 @@ class ModelConfig:
         assert self.d_model % self.n_heads == 0, (
             f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
         )
+
+
+def precompute_rope_freqs(
+    head_dim: int,
+    context_length: int,
+    theta: float = 10000.0,
+    device: torch.device | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Precompute cosine and sine frequency tensors for RoPE.
+
+    Uses the "split half" pairing formulation of RoPE, which is equivalent to the original
+    interleaved version but more memory-efficient. This follows the LLaMA implementation and
+    is the most common variant used in modern transformer models.
+
+    Args:
+        head_dim: Dimension of each attention head. Must be even.
+        context_length: Maximum sequence length to precompute frequencies for.
+        theta: Base frequency. Defaults to 10000.0 as in the original RoPE paper.
+        device: Device to create tensors on.
+
+    Returns:
+        Tuple of (cos, sin) tensors of shape (context_length, head_dim // 2).
+    """
+    # Frequency for each pair of dimensions: theta^(-2i/head_dim) for i in [0, head_dim/2)
+    # head_dim is used instead of d_model because RoPE is applied separately to each attention head
+    # i.e., a given dimension pair will have the same frequency across all heads,
+    # but different pairs will have different frequencies.
+    # Shape: (head_dim // 2,)
+    freqs = 1.0 / (theta ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim))
+
+    # Position indices: 0, 1, 2, ..., context_length - 1
+    # Shape: (context_length,)
+    positions = torch.arange(context_length, device=device)
+
+    # Outer product: angle for each (position, frequency) pair
+    # Shape: (context_length, head_dim // 2)
+    angles = torch.outer(positions, freqs)
+
+    return torch.cos(angles), torch.sin(angles)
+
+
+def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """Apply Rotary Position Embeddings to a query or key tensor.
+
+    Splits the head dimension in half and applies a 2D rotation to each pair:
+        [x1, x2] -> [x1*cos - x2*sin, x1*sin + x2*cos]
+
+    Args:
+        x: Tensor of shape (batch_size, n_heads, seq_len, head_dim).
+        cos: Cosine frequencies of shape (seq_len, head_dim // 2).
+        sin: Sine frequencies of shape (seq_len, head_dim // 2).
+
+    Returns:
+        Rotated tensor of the same shape as x.
+    """
+    head_dim = x.shape[-1]
+    x1 = x[..., : head_dim // 2]  # (batch, n_heads, seq_len, head_dim // 2)
+    x2 = x[..., head_dim // 2 :]  # (batch, n_heads, seq_len, head_dim // 2)
+
+    # Broadcast cos/sin over batch and head dimensions to match x's shape for elementwise operations
+    cos = cos.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, head_dim // 2)
+    sin = sin.unsqueeze(0).unsqueeze(0)
+
+    # Apply the rotation to each pair of dimensions and concatenate back together
+    rotated = torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
+    return rotated
 
 
 class MultiHeadAttention(nn.Module):
@@ -51,11 +118,13 @@ class MultiHeadAttention(nn.Module):
         # Final output projection to combine all head outputs
         self.out_proj = nn.Linear(config.d_model, config.d_model, bias=False)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
         """Forward pass of multi-head attention.
 
         Args:
             x: Input tensor of shape (batch_size, seq_len, d_model)
+            cos: RoPE cosine frequencies of shape (seq_len, head_dim // 2)
+            sin: RoPE sine frequencies of shape (seq_len, head_dim // 2)
 
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
@@ -77,6 +146,10 @@ class MultiHeadAttention(nn.Module):
         # Split into Q, K, V
         # Shape of each: (batch_size, n_heads, seq_len, head_dim)
         q, k, v = qkv.unbind(0)
+
+        # Apply RoPE to queries and keys (not values — position only affects matching, not content)
+        q = apply_rope(q, cos, sin)
+        k = apply_rope(k, cos, sin)
 
         # Compute scaled dot-product attention with causal masking
         # This efficiently computes: softmax(QK^T / sqrt(d_k)) V
@@ -158,17 +231,19 @@ class TransformerBlock(nn.Module):
         self.ln2 = nn.RMSNorm(config.d_model)
         self.ffn = FeedForward(config)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
         """Forward pass through the transformer block.
 
         Args:
             x: Input tensor of shape (batch_size, seq_len, d_model)
+            cos: RoPE cosine frequencies of shape (seq_len, head_dim // 2)
+            sin: RoPE sine frequencies of shape (seq_len, head_dim // 2)
 
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
         """
         # Self-attention with residual connection
-        x = x + self.attn(self.ln1(x))
+        x = x + self.attn(self.ln1(x), cos, sin)
 
         # Feed-forward with residual connection
         x = x + self.ffn(self.ln2(x))
@@ -181,7 +256,6 @@ class TransformerLM(nn.Module):
 
     The complete model that combines all components:
     - Token embeddings
-    - Position embeddings
     - Transformer blocks
     - Output projection
     """
@@ -193,13 +267,6 @@ class TransformerLM(nn.Module):
 
         # Token embeddings: vector representation for each token in vocabulary
         self.token_embedding = nn.Embedding(config.vocab_size, config.d_model)
-
-        # Position embeddings: vector representation for each position in the sequence
-        # Note: This is crucial because transformers have no inherent notion of order
-        self.position_embedding = nn.Embedding(config.context_length, config.d_model)
-
-        # Token embedding and position embedding values are learned during training
-        # Token embedding and position embedding are summed to form the input to the transformer blocks
 
         # Stack of transformer blocks
         self.blocks = nn.ModuleList([TransformerBlock(config) for _ in range(config.n_layers)])
@@ -217,6 +284,18 @@ class TransformerLM(nn.Module):
         # Weight tying: share weights between token embeddings and output projection
         # This reduces parameters and often improves performance
         self.lm_head.weight = self.token_embedding.weight
+
+        # Precompute RoPE frequencies and register as non-trainable buffers
+        # Buffers are moved to the correct device automatically with .to(device)
+        rope_cos, rope_sin = precompute_rope_freqs(
+            head_dim=config.d_model // config.n_heads,
+            context_length=config.context_length,
+            theta=config.rope_theta,
+        )
+        self.register_buffer("rope_cos", rope_cos)
+        self.register_buffer("rope_sin", rope_sin)
+        self.rope_cos: torch.Tensor
+        self.rope_sin: torch.Tensor
 
     def _init_weights(self, module: nn.Module):
         """Initialize weights following GPT-2 initialization scheme.
@@ -245,27 +324,22 @@ class TransformerLM(nn.Module):
         """
         batch_size, seq_len = idx.shape
 
-        # Transform token IDs to token embeddings
-        # Shape: (batch_size, seq_len, d_model)
-        token_emb = self.token_embedding(idx)
-
         if seq_len > self.config.context_length:
             raise ValueError(
                 f"Input sequence length ({seq_len}) exceeds model's context length ({self.config.context_length})"
             )
 
-        # Get position embeddings for positions 0, 1, 2, ..., seq_len-1
-        # Shape: (seq_len, d_model)
-        pos = torch.arange(0, seq_len, dtype=torch.long, device=idx.device)
-        pos_emb = self.position_embedding(pos)
+        # Transform token IDs to token embeddings
+        # Shape: (batch_size, seq_len, d_model)
+        x = self.token_embedding(idx)
 
-        # Add token and position embeddings
-        # Broadcasting handles adding pos_emb to each sequence in the batch
-        x = token_emb + pos_emb
+        # Slice precomputed RoPE frequencies for the current sequence length
+        cos = self.rope_cos[:seq_len]  # (seq_len, head_dim // 2)
+        sin = self.rope_sin[:seq_len]  # (seq_len, head_dim // 2)
 
         # Pass through all transformer blocks
         for block in self.blocks:
-            x = block(x)
+            x = block(x, cos, sin)
 
         # Final layer norm
         x = self.ln_f(x)

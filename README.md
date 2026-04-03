@@ -21,7 +21,7 @@ A decoder-only transformer language model built from scratch in PyTorch, inspire
 | Architecture | Decoder-only transformer (causal LM) |
 | Normalization | Pre-LN with RMSNorm |
 | Feed-forward | SwiGLU (`SiLU(gate) * value`) |
-| Position encoding | Learned embeddings |
+| Position encoding | RoPE (Rotary Position Embeddings) |
 | Attention | Multi-head with `F.scaled_dot_product_attention` |
 | Precision | bfloat16 (Ampere+ GPUs) |
 
@@ -32,6 +32,7 @@ A decoder-only transformer language model built from scratch in PyTorch, inspire
 - SwiGLU hidden dim: `⌈4 * d_model * 2/3⌉` rounded to nearest multiple of 256 — [Shazeer, 2020](https://arxiv.org/abs/2002.05202)
 - RMSNorm pre-normalization — [Zhang & Sennrich, 2019](https://arxiv.org/abs/1910.07467)
 - AdamW with `β=(0.9, 0.95)` and cosine LR schedule with linear warmup — [Loshchilov & Hutter, 2019](https://arxiv.org/abs/1711.05101)
+- RoPE positional encoding with split-half formulation — [Su et al., 2023](https://arxiv.org/abs/2104.09864)
 - Fused QKV projection (`d_model → 3*d_model`) in a single matrix for GPU efficiency
 - Causal masking via `F.scaled_dot_product_attention(is_causal=True)`, which dispatches to Flash Attention when available
 
@@ -151,7 +152,6 @@ artifacts/            # Generated files (gitignored)
 
 - [ ] Inference script (`generate.py`)
 - [ ] Inference Docker image
-- [ ] RoPE (Rotary Position Embeddings)
 - [ ] KV Cache
 - [ ] Grouped Query Attention (GQA)
 - [ ] Evaluation (perplexity benchmarks beyond val loss)
