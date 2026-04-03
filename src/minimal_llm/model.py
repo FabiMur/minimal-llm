@@ -102,8 +102,47 @@ def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.T
     return rotated
 
 
+class KVCache:
+    """Per-layer key-value cache for efficient autoregressive generation.
+
+    During token-by-token generation, K and V for all previous tokens would normally be recomputed
+    on every step. This cache stores them in pre-allocated tensors and appends only the new token's
+    K/V at each step, reducing generation from O(n²) to O(n) compute.
+    """
+
+    def __init__(
+        self,
+        batch_size: int,
+        n_kv_heads: int,
+        max_seq_len: int,
+        head_dim: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ):
+        """Allocate empty K and V buffers for the full context length."""
+        self.k = torch.zeros(batch_size, n_kv_heads, max_seq_len, head_dim, device=device, dtype=dtype)
+        self.v = torch.zeros(batch_size, n_kv_heads, max_seq_len, head_dim, device=device, dtype=dtype)
+        self.pos = 0  # Number of tokens written so far
+
+    def update(self, k_new: torch.Tensor, v_new: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Write new K/V into the cache and return all cached K/V up to the current position.
+
+        Args:
+            k_new: New key tensor of shape (batch_size, n_kv_heads, seq_len, head_dim)
+            v_new: New value tensor of shape (batch_size, n_kv_heads, seq_len, head_dim)
+
+        Returns:
+            Tuple of (k, v) tensors containing all cached tokens, shape (batch_size, n_kv_heads, pos, head_dim)
+        """
+        seq_len = k_new.shape[2]
+        self.k[:, :, self.pos : self.pos + seq_len] = k_new
+        self.v[:, :, self.pos : self.pos + seq_len] = v_new
+        self.pos += seq_len
+        return self.k[:, :, : self.pos], self.v[:, :, : self.pos]
+
+
 class MultiHeadAttention(nn.Module):
-    """Multi-head self-attention mechanism.
+    """Grouped query attention mechanism.
 
     The core of the transformer. It allows each token to gather information from all previous tokens in the sequence.
     Multiple heads allow the model to focus and learn on different aspects of the input.
@@ -125,13 +164,17 @@ class MultiHeadAttention(nn.Module):
         # Final output projection to combine all head outputs
         self.out_proj = nn.Linear(config.d_model, config.d_model, bias=False)
 
-    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, kv_cache: KVCache | None = None
+    ) -> torch.Tensor:
         """Forward pass of grouped query attention.
 
         Args:
             x: Input tensor of shape (batch_size, seq_len, d_model)
             cos: RoPE cosine frequencies of shape (seq_len, head_dim // 2)
             sin: RoPE sine frequencies of shape (seq_len, head_dim // 2)
+            kv_cache: Optional KVCache for autoregressive generation. If provided, K/V are
+                written to the cache and attention is computed over all cached tokens.
 
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
@@ -154,16 +197,25 @@ class MultiHeadAttention(nn.Module):
         q = apply_rope(q, cos, sin)
         k = apply_rope(k, cos, sin)
 
+        if kv_cache is not None:
+            # Append new K/V to the cache and retrieve all cached K/V
+            k, v = kv_cache.update(k, v)
+
+        # Causal masking is needed when Q and K cover the same positions (training or prefill).
+        # During single-token generation, Q has 1 token that is always the last, so it must attend
+        # to all cached K/V — using is_causal=True here would mask out all but the first cached token.
+        is_causal = k.shape[2] == seq_len
+
         # Expand K and V from n_kv_heads to n_heads by repeating each KV head n_groups times
         # This makes K and V compatible with Q for scaled dot-product attention
-        # Shape after repeat: (batch_size, n_heads, seq_len, head_dim)
+        # Shape after repeat: (batch_size, n_heads, total_seq_len, head_dim)
         k = k.repeat_interleave(self.n_groups, dim=1)
         v = v.repeat_interleave(self.n_groups, dim=1)
 
         # Compute scaled dot-product attention with causal masking
         # This efficiently computes: softmax(QK^T / sqrt(d_k)) V
         # Shape: (batch_size, n_heads, seq_len, head_dim)
-        out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
 
         # Concatenate heads and project to output
         # Shape: (batch_size, seq_len, d_model)
@@ -238,19 +290,22 @@ class TransformerBlock(nn.Module):
         self.ln2 = nn.RMSNorm(config.d_model)
         self.ffn = FeedForward(config)
 
-    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, kv_cache: KVCache | None = None
+    ) -> torch.Tensor:
         """Forward pass through the transformer block.
 
         Args:
             x: Input tensor of shape (batch_size, seq_len, d_model)
             cos: RoPE cosine frequencies of shape (seq_len, head_dim // 2)
             sin: RoPE sine frequencies of shape (seq_len, head_dim // 2)
+            kv_cache: Optional KVCache for this layer, used during autoregressive generation.
 
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
         """
         # Self-attention with residual connection
-        x = x + self.attn(self.ln1(x), cos, sin)
+        x = x + self.attn(self.ln1(x), cos, sin, kv_cache)
 
         # Feed-forward with residual connection
         x = x + self.ffn(self.ln2(x))
@@ -317,13 +372,22 @@ class TransformerLM(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(
-        self, idx: torch.Tensor, targets: torch.Tensor | None = None
+        self,
+        idx: torch.Tensor,
+        targets: torch.Tensor | None = None,
+        kv_caches: list[KVCache] | None = None,
+        start_pos: int = 0,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """Forward pass through the model.
 
         Args:
             idx: Matrix of input token IDs of shape (batch_size, seq_len)
             targets: Optional target token IDs for computing loss, same shape as idx
+            kv_caches: Optional list of per-layer KVCache objects for autoregressive generation.
+                Must have one entry per transformer layer.
+            start_pos: Position offset for RoPE, used when generating with a KV cache so that
+                the new token's position encoding is correct (e.g. start_pos=5 when 5 tokens
+                have already been cached).
 
         Returns:
             logits: Unnormalized scores for each token in the vocabulary, shape (batch_size, seq_len, vocab_size)
@@ -331,22 +395,24 @@ class TransformerLM(nn.Module):
         """
         batch_size, seq_len = idx.shape
 
-        if seq_len > self.config.context_length:
+        if start_pos + seq_len > self.config.context_length:
             raise ValueError(
-                f"Input sequence length ({seq_len}) exceeds model's context length ({self.config.context_length})"
+                f"Sequence position ({start_pos + seq_len}) exceeds model's "
+                f"context length ({self.config.context_length})"
             )
 
         # Transform token IDs to token embeddings
         # Shape: (batch_size, seq_len, d_model)
         x = self.token_embedding(idx)
 
-        # Slice precomputed RoPE frequencies for the current sequence length
-        cos = self.rope_cos[:seq_len]  # (seq_len, head_dim // 2)
-        sin = self.rope_sin[:seq_len]  # (seq_len, head_dim // 2)
+        # Slice precomputed RoPE frequencies for the current positions
+        # start_pos > 0 during cached generation so the new token gets the right positional encoding
+        cos = self.rope_cos[start_pos : start_pos + seq_len]  # (seq_len, head_dim // 2)
+        sin = self.rope_sin[start_pos : start_pos + seq_len]  # (seq_len, head_dim // 2)
 
         # Pass through all transformer blocks
-        for block in self.blocks:
-            x = block(x, cos, sin)
+        for i, block in enumerate(self.blocks):
+            x = block(x, cos, sin, kv_caches[i] if kv_caches is not None else None)
 
         # Final layer norm
         x = self.ln_f(x)
@@ -374,8 +440,10 @@ class TransformerLM(nn.Module):
     ) -> torch.Tensor:
         """Generate new tokens from the model given an initial prompt (idx).
 
-        This method is used for inference: given a prompt (idx), generate new tokens
-        one at a time by repeatedly sampling from the model's output distribution.
+        Uses a KV cache to avoid recomputing keys and values for previously seen tokens.
+        Generation proceeds in two phases:
+          1. Prefill: run the full prompt through the model, filling all KV caches.
+          2. Decode: generate one token at a time, passing only the new token each step.
 
         Args:
             idx: Input matrix of token IDs of shape (batch_size, seq_len)
@@ -389,30 +457,45 @@ class TransformerLM(nn.Module):
         if temperature <= 0:
             raise ValueError("Temperature must be greater than 0")
 
+        prompt_len = idx.shape[1]
+        if prompt_len + num_new_tokens > self.config.context_length:
+            raise ValueError(
+                f"prompt_len ({prompt_len}) + num_new_tokens ({num_new_tokens}) exceeds model's "
+                f"context length ({self.config.context_length})"
+            )
+
+        device = idx.device
+        dtype = next(self.parameters()).dtype
+        head_dim = self.config.d_model // self.config.n_heads
+
+        # Allocate one KVCache per layer for the full context length
+        kv_caches = [
+            KVCache(idx.shape[0], self.config.n_kv_heads, self.config.context_length, head_dim, device, dtype)
+            for _ in range(self.config.n_layers)
+        ]
+
+        # Phase 1 — Prefill: process the full prompt and populate the KV caches
+        logits, _ = self(idx, kv_caches=kv_caches, start_pos=0)
+        start_pos = prompt_len
+
+        # Phase 2 — Decode: generate one token at a time
         for _ in range(num_new_tokens):
-            # Crop context if it exceeds maximum context length
-            idx_cond = idx if idx.size(1) <= self.config.context_length else idx[:, -self.config.context_length :]
+            # Take logits for the last token position and apply temperature
+            next_logits = logits[:, -1, :] / temperature
 
-            # Get predictions for next token
-            logits, _ = self(idx_cond)
-
-            # Focus only on the last position (next token prediction) and apply temperature
-            logits = logits[:, -1, :] / temperature
-
-            # Optionally apply top-k filtering if specified
+            # Optionally apply top-k filtering
             if top_k is not None:
-                # Mask out all tokens that are not in the top k threshold
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float("Inf")
+                v, _ = torch.topk(next_logits, min(top_k, next_logits.size(-1)))
+                next_logits[next_logits < v[:, [-1]]] = -float("Inf")
 
-            # Convert logits to probabilities
-            probs = F.softmax(logits, dim=-1)
-
-            # Sample from the distribution
+            # Sample next token
+            probs = F.softmax(next_logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1)
-
-            # Append the new token to the sequence
             idx = torch.cat((idx, idx_next), dim=1)
+
+            # Run the model on the single new token — K/V for previous tokens are in the cache
+            logits, _ = self(idx_next, kv_caches=kv_caches, start_pos=start_pos)
+            start_pos += 1
 
         return idx
 

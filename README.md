@@ -34,6 +34,7 @@ A decoder-only transformer language model built from scratch in PyTorch, inspire
 - AdamW with `β=(0.9, 0.95)` and cosine LR schedule with linear warmup — [Loshchilov & Hutter, 2019](https://arxiv.org/abs/1711.05101)
 - RoPE positional encoding with split-half formulation — [Su et al., 2023](https://arxiv.org/abs/2104.09864)
 - Grouped Query Attention (GQA) with `n_kv_heads=4`: 4 KV heads shared across 16 Q heads, reducing KV cache size 4x at inference — [Ainslie et al., 2023](https://arxiv.org/abs/2305.13245)
+- KV Cache for inference: pre-allocated per-layer buffers that are prefilled once over the prompt, then each decode step processes only the new tokens query and appends new K/V pairs to the cache — [LLaMA, 2023](https://arxiv.org/abs/2302.13971)
 - Causal masking via `F.scaled_dot_product_attention(is_causal=True)`, which dispatches to Flash Attention when available
 
 **Primary references:**
@@ -152,7 +153,6 @@ artifacts/            # Generated files (gitignored)
 
 - [ ] Inference script (`generate.py`)
 - [ ] Inference Docker image
-- [ ] KV Cache
 - [ ] Evaluation (perplexity benchmarks beyond val loss)
 - [ ] Testing
 
