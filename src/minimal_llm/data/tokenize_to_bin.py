@@ -98,7 +98,7 @@ def main() -> None:
     """
     ap = argparse.ArgumentParser()
     ap.add_argument("--tokenizer", type=str, default="artifacts/tokenizer.json")
-    ap.add_argument("--corpus", type=str, default="data/corpus.txt")
+    ap.add_argument("--corpus", type=str, default="artifacts/corpus.txt")
     ap.add_argument("--out_dir", type=str, default="artifacts")
     ap.add_argument("--train_name", type=str, default="train.bin")
     ap.add_argument("--val_name", type=str, default="val.bin")
