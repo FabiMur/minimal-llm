@@ -18,16 +18,21 @@ class ModelConfig:
     context_length: int = 1024  # Maximum sequence length the model can handle
     d_model: int = 1024  # Dimensionality of token embeddings and model hidden states
     n_layers: int = 16  # Number of transformer blocks to stack
-    n_heads: int = 16  # Number of attention heads per block
+    n_heads: int = 16  # Number of query heads per block
+    n_kv_heads: int = 4  # Number of key/value heads per block for GQA (must divide n_heads evenly)
     rope_theta: float = 10000.0  # Base frequency for RoPE
 
     def __post_init__(self):
-        """Validate that d_model is divisible by n_heads.
+        """Validate attention head configuration.
 
         Each attention head will manage d_model // n_heads dimensions.
+        n_kv_heads must evenly divide n_heads so Q heads can be grouped.
         """
         assert self.d_model % self.n_heads == 0, (
             f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
+        )
+        assert self.n_heads % self.n_kv_heads == 0, (
+            f"n_heads ({self.n_heads}) must be divisible by n_kv_heads ({self.n_kv_heads})"
         )
 
 
@@ -105,21 +110,23 @@ class MultiHeadAttention(nn.Module):
     """
 
     def __init__(self, config: ModelConfig):
-        """Initialize the multi-head attention module."""
+        """Initialize the grouped query attention module."""
         super().__init__()
         self.n_heads = config.n_heads
-        self.d_model = config.d_model
+        self.n_kv_heads = config.n_kv_heads
+        self.n_groups = config.n_heads // config.n_kv_heads  # Q heads per KV head
         self.head_dim = config.d_model // config.n_heads
 
-        # These 3 projection matrices transform the input into queries, keys, and values
-        # They are combined into a single matrix for efficiency
-        self.qkv_proj = nn.Linear(config.d_model, 3 * config.d_model, bias=False)
+        # Q projects to all n_heads; K and V project to the smaller n_kv_heads
+        self.q_proj = nn.Linear(config.d_model, config.n_heads * self.head_dim, bias=False)
+        self.k_proj = nn.Linear(config.d_model, config.n_kv_heads * self.head_dim, bias=False)
+        self.v_proj = nn.Linear(config.d_model, config.n_kv_heads * self.head_dim, bias=False)
 
         # Final output projection to combine all head outputs
         self.out_proj = nn.Linear(config.d_model, config.d_model, bias=False)
 
     def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
-        """Forward pass of multi-head attention.
+        """Forward pass of grouped query attention.
 
         Args:
             x: Input tensor of shape (batch_size, seq_len, d_model)
@@ -129,38 +136,38 @@ class MultiHeadAttention(nn.Module):
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
         """
-        batch_size, seq_len, d_model = x.shape
+        batch_size, seq_len, _ = x.shape
 
-        # Project input to queries, keys, and values
-        # Input shape: (batch_size, seq_len, d_model)
-        # Output shape: (batch_size, seq_len, 3 * d_model)
-        qkv = self.qkv_proj(x)
+        # Project to Q, K, V — K and V have fewer heads than Q
+        # Q shape: (batch_size, seq_len, n_heads * head_dim)
+        # K, V shape: (batch_size, seq_len, n_kv_heads * head_dim)
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
 
-        # Split QKV into another 2 dimensions: one for the 3 (Q, K, V) and one for the heads
-        # Shape: (batch_size, seq_len, 3, n_heads, head_dim)
-        qkv = qkv.reshape(batch_size, seq_len, 3, self.n_heads, self.head_dim)
-
-        # Permute dimensions to be able to split into Q, K, V, batch and heads easily
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # (3, batch_size, n_heads, seq_len, head_dim)
-
-        # Split into Q, K, V
-        # Shape of each: (batch_size, n_heads, seq_len, head_dim)
-        q, k, v = qkv.unbind(0)
+        # Reshape and transpose to (batch_size, n_heads/n_kv_heads, seq_len, head_dim)
+        q = q.reshape(batch_size, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
+        k = k.reshape(batch_size, seq_len, self.n_kv_heads, self.head_dim).transpose(1, 2)
+        v = v.reshape(batch_size, seq_len, self.n_kv_heads, self.head_dim).transpose(1, 2)
 
         # Apply RoPE to queries and keys (not values — position only affects matching, not content)
         q = apply_rope(q, cos, sin)
         k = apply_rope(k, cos, sin)
 
+        # Expand K and V from n_kv_heads to n_heads by repeating each KV head n_groups times
+        # This makes K and V compatible with Q for scaled dot-product attention
+        # Shape after repeat: (batch_size, n_heads, seq_len, head_dim)
+        k = k.repeat_interleave(self.n_groups, dim=1)
+        v = v.repeat_interleave(self.n_groups, dim=1)
+
         # Compute scaled dot-product attention with causal masking
         # This efficiently computes: softmax(QK^T / sqrt(d_k)) V
-        # The is_causal=True flag ensures tokens only attend to previous
-        # positions by applying a mask to the attention scores.
         # Shape: (batch_size, n_heads, seq_len, head_dim)
         out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
 
-        # Concatenate heads, and project to output
+        # Concatenate heads and project to output
         # Shape: (batch_size, seq_len, d_model)
-        out = out.transpose(1, 2).contiguous().reshape(batch_size, seq_len, d_model)
+        out = out.transpose(1, 2).contiguous().reshape(batch_size, seq_len, self.n_heads * self.head_dim)
         out = self.out_proj(out)
 
         return out

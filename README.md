@@ -22,7 +22,7 @@ A decoder-only transformer language model built from scratch in PyTorch, inspire
 | Normalization | Pre-LN with RMSNorm |
 | Feed-forward | SwiGLU (`SiLU(gate) * value`) |
 | Position encoding | RoPE (Rotary Position Embeddings) |
-| Attention | Multi-head with `F.scaled_dot_product_attention` |
+| Attention | Grouped Query Attention (GQA) with `F.scaled_dot_product_attention` |
 | Precision | bfloat16 (Ampere+ GPUs) |
 
 **Key design choices:**
@@ -33,7 +33,7 @@ A decoder-only transformer language model built from scratch in PyTorch, inspire
 - RMSNorm pre-normalization — [Zhang & Sennrich, 2019](https://arxiv.org/abs/1910.07467)
 - AdamW with `β=(0.9, 0.95)` and cosine LR schedule with linear warmup — [Loshchilov & Hutter, 2019](https://arxiv.org/abs/1711.05101)
 - RoPE positional encoding with split-half formulation — [Su et al., 2023](https://arxiv.org/abs/2104.09864)
-- Fused QKV projection (`d_model → 3*d_model`) in a single matrix for GPU efficiency
+- Grouped Query Attention (GQA) with `n_kv_heads=4`: 4 KV heads shared across 16 Q heads, reducing KV cache size 4x at inference — [Ainslie et al., 2023](https://arxiv.org/abs/2305.13245)
 - Causal masking via `F.scaled_dot_product_attention(is_causal=True)`, which dispatches to Flash Attention when available
 
 **Primary references:**
@@ -41,7 +41,7 @@ A decoder-only transformer language model built from scratch in PyTorch, inspire
 - [LLaMA: Open and Efficient Foundation Language Models](https://arxiv.org/abs/2302.13971) — Touvron et al., 2023
 - [Training Compute-Optimal Large Language Models](https://arxiv.org/abs/2203.15556) (Chinchilla) — Hoffmann et al., 2022
 
-**Default config:** `vocab_size=32000`, `context_length=1024`, `d_model=1024`, `n_layers=16`, `n_heads=16`
+**Default config:** `vocab_size=32000`, `context_length=1024`, `d_model=1024`, `n_layers=16`, `n_heads=16`, `n_kv_heads=4`
 
 ## Setup
 
@@ -153,7 +153,6 @@ artifacts/            # Generated files (gitignored)
 - [ ] Inference script (`generate.py`)
 - [ ] Inference Docker image
 - [ ] KV Cache
-- [ ] Grouped Query Attention (GQA)
 - [ ] Evaluation (perplexity benchmarks beyond val loss)
 - [ ] Testing
 
