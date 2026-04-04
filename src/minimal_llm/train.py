@@ -180,7 +180,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", type=Path, default=None, help="Path to checkpoint to resume from.")
 
     # Training hyperparameters
-    parser.add_argument("--max_steps", type=int, default=600000)
+    parser.add_argument("--max_steps", type=int, default=2000000)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--grad_accum_steps", type=int, default=1)
     parser.add_argument("--lr", type=float, default=3e-4)
