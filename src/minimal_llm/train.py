@@ -205,6 +205,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--d_model", type=int, default=1024)
     parser.add_argument("--n_layers", type=int, default=32)
     parser.add_argument("--n_heads", type=int, default=16)
+    parser.add_argument("--n_kv_heads", type=int, default=4)
+    parser.add_argument("--rope_theta", type=float, default=10000.0)
 
     return parser.parse_args()
 
@@ -224,6 +226,8 @@ def main() -> None:
         d_model=args.d_model,
         n_layers=args.n_layers,
         n_heads=args.n_heads,
+        n_kv_heads=args.n_kv_heads,
+        rope_theta=args.rope_theta,
     )
     model = TransformerLM(config, grad_checkpoint=args.grad_checkpoint).to(device)
     print(f"Parameters: {model.count_parameters() / 1e6:.1f}M")
