@@ -21,7 +21,7 @@ RUN uv venv --python python3.11
 COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 
-# Install deps without dev tools, pulling torch from the CUDA index
-RUN uv sync --no-dev --index-url https://download.pytorch.org/whl/cu132
+# Install deps without dev tools. Use --frozen to ensure that the lock file is respected.
+RUN uv sync --no-dev --frozen
 
 ENTRYPOINT ["python", "-m", "minimal_llm.train"]
