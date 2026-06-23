@@ -1,4 +1,4 @@
-FROM nvidia/cuda:13.2.0-cudnn-devel-ubuntu24.04
+FROM nvidia/cuda:12.6.2-cudnn-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11-venv \
     python3.11-dev \
     python3-pip \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install uv --break-system-packages
