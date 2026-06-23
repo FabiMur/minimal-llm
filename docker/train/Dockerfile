@@ -24,6 +24,4 @@ COPY src/ ./src/
 # Install deps without dev tools, pulling torch from the CUDA index
 RUN uv sync --no-dev --index-url https://download.pytorch.org/whl/cu132
 
-VOLUME ["/app/data", "/app/artifacts", "/app/checkpoints"]
-
 ENTRYPOINT ["python", "-m", "minimal_llm.train"]
