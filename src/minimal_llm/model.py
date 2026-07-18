@@ -16,7 +16,7 @@ class ModelConfig:
     """
 
     vocab_size: int = 32000  # Size of the vocabulary (number of unique tokens)
-    context_length: int = 1024  # Maximum sequence length the model can handle
+    context_length: int = 2048  # Maximum sequence length the model can handle
     d_model: int = 1024  # Dimensionality of token embeddings and model hidden states
     n_layers: int = 16  # Number of transformer blocks to stack
     n_heads: int = 16  # Number of query heads per block
