@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 
 
 def load_meta(meta_path: str | Path) -> dict:
@@ -74,6 +74,7 @@ def create_bin_dataloaders(
     batch_size: int = 8,
     num_workers: int = 0,
     pin_memory: bool = True,
+    val_seed: int = 42,
 ) -> tuple[DataLoader, DataLoader]:
     """Create training and validation DataLoaders from binary token files.
 
@@ -84,6 +85,8 @@ def create_bin_dataloaders(
         batch_size: Batch size for both loaders.
         num_workers: Number of parallel data loading workers.
         pin_memory: Pin memory for faster GPU transfer.
+        val_seed: Seed for the fixed validation permutation, so every eval sees
+            the same windows in the same order.
 
     Returns:
         Tuple of (train_loader, val_loader).
@@ -102,8 +105,9 @@ def create_bin_dataloaders(
         drop_last=True,
     )
 
+    perm = np.random.default_rng(val_seed).permutation(len(val_ds))
     val_loader = DataLoader(
-        val_ds,
+        Subset(val_ds, perm.tolist()),
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
