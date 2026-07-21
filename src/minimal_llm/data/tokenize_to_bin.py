@@ -107,7 +107,7 @@ def main() -> None:
     ap.add_argument("--max_lines", type=int, default=None)
     ap.add_argument("--batch_lines", type=int, default=10_000)
     ap.add_argument("--dtype", type=str, choices=["uint16", "int32"], default="uint16")
-    ap.add_argument("--add_eos", action=argparse.BooleanOptionalAction, default=True)  # --add_eos / --no-add_eos flag
+    ap.add_argument("--add_special_tokens", action=argparse.BooleanOptionalAction, default=True)
     args = ap.parse_args()
 
     if not (0.0 <= args.val_ratio <= 1.0):
@@ -132,13 +132,13 @@ def main() -> None:
     val_path = out_dir / args.val_name
     meta_path = out_dir / "meta.json"
 
-    eos_id = tok.token_to_id("[EOS]") if args.add_eos else None
-    if args.add_eos and eos_id is None:
-        raise ValueError("Passed --add_eos but tokenizer has no [EOS] token.")
+    bos_id = tok.token_to_id("[BOS]") if args.add_special_tokens else None
+    if args.add_special_tokens and bos_id is None:
+        raise ValueError("Passed --add_special_tokens but tokenizer has no [BOS] token.")
 
-    bos_id = tok.token_to_id("[BOS]") if args.add_eos else None
-    if args.add_eos and bos_id is None:
-        raise ValueError("Passed --add_eos but tokenizer has no [BOS] token.")
+    eos_id = tok.token_to_id("[EOS]") if args.add_special_tokens else None
+    if args.add_special_tokens and eos_id is None:
+        raise ValueError("Passed --add_special_tokens but tokenizer has no [EOS] token.")
 
     total_lines = 0
     total_tokens = 0
@@ -236,9 +236,9 @@ def main() -> None:
         "dtype": args.dtype,
         "np_dtype": np.dtype(dtype).name,
         "token_bytes": int(np.dtype(dtype).itemsize),
-        "add_eos": bool(args.add_eos),
-        "eos_id": eos_id,
+        "add_special_tokens": bool(args.add_special_tokens),
         "bos_id": bos_id,
+        "eos_id": eos_id,
         "val_ratio": args.val_ratio,
         "seed": args.seed,
         "train_lines": int(split_train_lines),
