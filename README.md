@@ -61,10 +61,12 @@ uv sync
 Streams Wikipedia, FineWeb, TinyStories, and OpenWebText into a single text file:
 
 ```bash
-uv run python -m minimal_llm.data.build_corpus --max_lines 10000000
+uv run python -m minimal_llm.data.build_corpus
 ```
 
-The corpus size follows the [Chinchilla scaling law](https://arxiv.org/abs/2203.15556), which recommends ~20 tokens per parameter for compute-optimal training. For a ~239M parameter model that means ~4.8B tokens. The pipeline downloads 6–7B tokens to have headroom — not all of them need to be used.
+The corpus size targets **2x Chinchilla**. The [Chinchilla scaling law](https://arxiv.org/abs/2203.15556) puts the compute-optimal point at ~20 tokens per parameter, which for this ~393M parameter model is ~7.9B tokens. Meanwhile this pipeline defaults to 20M lines (roughly 15–16B tokens) for ~40 tokens per parameter.
+
+Training past the compute-optimal point is deliberate. Chinchilla asks which split between model size and training tokens minimizes loss for a fixed training budget, and says nothing about inference. The cost of a forward pass depends on model size alone, not on how many tokens the model was trained on: training data is paid for once, parameters are paid for on every token generated. Reaching a given loss with a smaller model and more tokens therefore costs more to train and less to run, same reasoning behind the [LLaMA](https://arxiv.org/abs/2302.13971) models, which are trained well beyond compute-optimal for their size. Not all of the corpus needs to be consumed, `--max_steps` controls how much is actually seen.
 
 ### 2. Train the tokenizer
 
