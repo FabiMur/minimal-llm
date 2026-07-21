@@ -70,7 +70,7 @@ Training past the compute-optimal point is deliberate. Chinchilla asks which spl
 
 ### 2. Train the tokenizer
 
-BPE tokenizer with 32K vocab and special tokens `[PAD]`, `[BOS]`, `[EOS]`:
+BPE tokenizer with 32K vocab and special tokens `[PAD]`, `[BOS]`, `[EOS]`, plus the ChatML delimiters `<|im_start|>` / `<|im_end|>`. The chat tokens never appear in the pretraining corpus, they are declared up front so the vocab (and therefore the embedding matrix) stays fixed when fine-tuning on chat data later.
 
 ```bash
 uv run python -m minimal_llm.data.train_tokenizer \

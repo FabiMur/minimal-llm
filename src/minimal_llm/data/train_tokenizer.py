@@ -29,7 +29,7 @@ def main() -> None:
     trainer = BpeTrainer(
         vocab_size=args.vocab_size,
         min_frequency=args.min_frequency,
-        special_tokens=["[PAD]", "[BOS]", "[EOS]"],
+        special_tokens=["[PAD]", "[BOS]", "[EOS]", "<|im_start|>", "<|im_end|>"],
     )
 
     tok.train(files=[args.corpus], trainer=trainer)
