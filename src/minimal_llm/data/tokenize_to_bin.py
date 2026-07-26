@@ -132,13 +132,13 @@ def main() -> None:
     val_path = out_dir / args.val_name
     meta_path = out_dir / "meta.json"
 
-    bos_id = tok.token_to_id("[BOS]") if args.add_special_tokens else None
+    bos_id = tok.token_to_id("<|bos|>") if args.add_special_tokens else None
     if args.add_special_tokens and bos_id is None:
-        raise ValueError("Passed --add_special_tokens but tokenizer has no [BOS] token.")
+        raise ValueError("Passed --add_special_tokens but tokenizer has no <|bos|> token.")
 
-    eos_id = tok.token_to_id("[EOS]") if args.add_special_tokens else None
+    eos_id = tok.token_to_id("<|eos|>") if args.add_special_tokens else None
     if args.add_special_tokens and eos_id is None:
-        raise ValueError("Passed --add_special_tokens but tokenizer has no [EOS] token.")
+        raise ValueError("Passed --add_special_tokens but tokenizer has no <|eos|> token.")
 
     total_lines = 0
     total_tokens = 0
