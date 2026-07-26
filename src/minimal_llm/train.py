@@ -180,24 +180,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", type=Path, default=None, help="Path to checkpoint to resume from.")
 
     # Training hyperparameters
-    parser.add_argument("--max_steps", type=int, default=2000000)
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--grad_accum_steps", type=int, default=1)
+    parser.add_argument("--max_steps", type=int, default=34000)
+    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--grad_accum_steps", type=int, default=16)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight_decay", type=float, default=0.1)
-    parser.add_argument("--warmup_steps", type=int, default=2000)
+    parser.add_argument("--warmup_steps", type=int, default=1000)
     parser.add_argument("--min_lr_ratio", type=float, default=0.1)
     parser.add_argument("--grad_clip", type=float, default=1.0)
-    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no_compile", action="store_true", help="Disable torch.compile.")
-    parser.add_argument("--grad_checkpoint", action="store_true", help="Enable gradient checkpointing")
+    parser.add_argument("--no_grad_checkpoint", action="store_true", help="Disable gradient checkpointing.")
 
     # Evaluation and logging
     parser.add_argument("--log_interval", type=int, default=10, help="Log loss every N steps.")
     parser.add_argument("--eval_interval", type=int, default=500, help="Run validation every N steps.")
     parser.add_argument("--eval_batches", type=int, default=50, help="Max batches per validation run.")
-    parser.add_argument("--save_interval", type=int, default=1000, help="Save checkpoint every N steps.")
+    parser.add_argument("--save_interval", type=int, default=250, help="Save checkpoint every N steps.")
 
     # Model hyperparameters
     parser.add_argument("--vocab_size", type=int, default=32000)
@@ -229,7 +229,7 @@ def main() -> None:
         n_kv_heads=args.n_kv_heads,
         rope_theta=args.rope_theta,
     )
-    model = TransformerLM(config, grad_checkpoint=args.grad_checkpoint).to(device)
+    model = TransformerLM(config, grad_checkpoint=not args.no_grad_checkpoint).to(device)
     print(f"Parameters: {model.count_parameters() / 1e6:.1f}M")
 
     # Optimizer & scheduler
