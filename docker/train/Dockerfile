@@ -19,7 +19,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 RUN uv venv --python python3.11
 
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 
 # Install deps without dev tools. Use --frozen to ensure that the lock file is respected.
