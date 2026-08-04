@@ -3,9 +3,9 @@ FROM nvidia/cuda:12.6.2-cudnn-runtime-ubuntu24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
     python3-pip \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -17,7 +17,7 @@ WORKDIR /app
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-RUN uv venv --python python3.11
+RUN uv venv --python python3.12
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
