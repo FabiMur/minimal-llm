@@ -41,7 +41,7 @@ docker run --gpus all -v "$DATA_DIR:/app/artifacts" \
   -e TORCHINDUCTOR_FX_GRAPH_CACHE=1 \
   -e TRITON_CACHE_DIR=/app/artifacts/torch-cache/triton \
   "$IMAGE" \
-  --run_name "$RUN_NAME" --save_interval 50 "${RESUME_ARGS[@]}"
+  --run_name "$RUN_NAME" --save_interval 25 "${RESUME_ARGS[@]}"
 
 kill "$SYNC_PID" || true
 aws s3 sync "$DATA_DIR/checkpoints/" "s3://$BUCKET/checkpoints/" --exclude "*" --include "*.pt"
