@@ -45,19 +45,57 @@ Boot script passed to every launch. It pulls the image, downloads `train.bin` /
 `torch.compile` artifacts in S3 namespaced by instance type (Inductor/Triton
 output is tied to GPU arch, so g5's A10G and g6's L4 must not share a cache).
 
-## `ensure_training.py`
+## Watchdog
 
-Watchdog. Reports whether an instance is alive and, with `--launch`, starts a
-new spot instance that resumes from the latest checkpoint.
+The run is kept alive by a Lambda on a 5-minute EventBridge schedule. It lives
+in AWS on purpose: an earlier version depended on a chat session re-arming a
+timer each cycle, that chain broke silently, and the run sat dead for 22 hours.
+
+| Piece | Name |
+| --- | --- |
+| Function | `minimal-llm-watchdog` |
+| Role | `minimal-llm-watchdog-role` |
+| Schedule | `minimal-llm-watchdog-schedule` (`rate(5 minutes)`) |
+| Boot script | `s3://minimal-llm-fabimur/infra/user-data.sh` |
+
+Each tick:
+
+* nothing running → launch spot, falling back to on-demand (~3x the price)
+* spot running → nothing to do
+* on-demand running → migrate back to spot once capacity returns
+
+Migration is gated on `GetSpotPlacementScores` (a non-destructive capacity
+probe, 1-10) reaching 8, plus a 2-hour cooldown, because a failed migration
+costs a warm-up plus every step since the last checkpoint. If the spot request
+fails after the on-demand instance is terminated, the function relaunches
+on-demand immediately rather than leaving the run dead until the next tick.
+`TerminateInstances` is scoped by a tag condition so a bug cannot reap anything
+but our own instances.
 
 ```bash
 export AWS_PROFILE=minimal-llm
-python3 infra/ensure_training.py            # report only (safe to poll)
-python3 infra/ensure_training.py --launch   # relaunch if nothing is running
+python3 infra/deploy_watchdog.py             # create or update, idempotent
+python3 infra/deploy_watchdog.py --teardown  # remove it all
+
+aws lambda invoke --region us-east-2 --function-name minimal-llm-watchdog /dev/stdout
+aws logs tail /aws/lambda/minimal-llm-watchdog --region us-east-2 --follow
+```
+
+Redeploy after editing `user-data.sh` — the script is uploaded to S3 on every
+deploy, and the function reads it from there at launch time.
+
+### `ensure_training.py`
+
+The same logic as a local CLI, for manual checks and one-off launches.
+
+```bash
+python3 infra/ensure_training.py                            # report only
+python3 infra/ensure_training.py --launch                   # spot only
+python3 infra/ensure_training.py --launch --allow-on-demand # spot, then on-demand
 ```
 
 It never launches while an instance is `pending` or `running`, and it tries
-`g5.xlarge` then `g6.xlarge` across all three AZs until spot capacity is found.
+`g5.xlarge` then `g6.xlarge` across all three AZs.
 
 To stop it from relaunching (e.g. the run is finished), set the STOP marker:
 
