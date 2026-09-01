@@ -93,8 +93,23 @@ def resolve_ami(ssm) -> str:
     return ssm.get_parameter(Name=AMI_SSM_PARAM)["Parameter"]["Value"]
 
 
-def launch(ec2, ami: str, user_data: str):
-    """Try every (instance type, AZ) pair until spot capacity is found."""
+def launch(ec2, ami: str, user_data: str, spot: bool = True):
+    """Try every (instance type, AZ) pair until capacity is found."""
+    market = (
+        {
+            "InstanceMarketOptions": {
+                "MarketType": "spot",
+                "SpotOptions": {
+                    "SpotInstanceType": "one-time",
+                    "InstanceInterruptionBehavior": "terminate",
+                },
+            }
+        }
+        if spot
+        else {}
+    )
+    lifecycle = "spot" if spot else "on-demand"
+
     attempts = []
     for instance_type in INSTANCE_TYPES:
         for az, subnet in SUBNETS:
@@ -109,13 +124,6 @@ def launch(ec2, ami: str, user_data: str):
                     SecurityGroupIds=[SECURITY_GROUP],
                     IamInstanceProfile={"Name": IAM_PROFILE},
                     UserData=user_data,
-                    InstanceMarketOptions={
-                        "MarketType": "spot",
-                        "SpotOptions": {
-                            "SpotInstanceType": "one-time",
-                            "InstanceInterruptionBehavior": "terminate",
-                        },
-                    },
                     BlockDeviceMappings=[
                         {
                             "DeviceName": "/dev/sda1",
@@ -133,12 +141,13 @@ def launch(ec2, ami: str, user_data: str):
                         }
                         for rt in ("instance", "volume")
                     ],
+                    **market,
                 )
                 inst = resp["Instances"][0]
                 return inst["InstanceId"], instance_type, az, attempts
             except ClientError as exc:
                 code = exc.response["Error"]["Code"]
-                attempts.append(f"{instance_type}/{az}: {code}")
+                attempts.append(f"{lifecycle} {instance_type}/{az}: {code}")
                 # Quota errors will not be fixed by trying another AZ.
                 if code in ("VcpuLimitExceeded", "MaxSpotInstanceCountExceeded"):
                     return None, None, None, attempts
@@ -151,6 +160,11 @@ def main() -> int:
         "--launch",
         action="store_true",
         help="actually launch when nothing is running (default: report only)",
+    )
+    parser.add_argument(
+        "--allow-on-demand",
+        action="store_true",
+        help="fall back to on-demand (~3x the spot price) when spot has no capacity",
     )
     args = parser.parse_args()
 
@@ -195,11 +209,22 @@ def main() -> int:
     ami = resolve_ami(ssm)
     print(f"  resolved AMI {ami}; launching…")
 
-    instance_id, instance_type, az, attempts = launch(ec2, ami, user_data)
+    instance_id, instance_type, az, attempts = launch(ec2, ami, user_data, spot=True)
+
+    if not instance_id and args.allow_on_demand:
+        print("  spot exhausted; falling back to on-demand")
+        oid, otype, oaz, more = launch(ec2, ami, user_data, spot=False)
+        attempts += more
+        instance_id, instance_type, az = oid, otype, oaz
+
     for line in attempts:
         print(f"    tried {line}")
     if instance_id:
-        print(f"  LAUNCHED {instance_id} ({instance_type} in {az})")
+        inst = ec2.describe_instances(InstanceIds=[instance_id])["Reservations"][0][
+            "Instances"
+        ][0]
+        kind = inst.get("InstanceLifecycle", "on-demand")
+        print(f"  LAUNCHED {instance_id} ({kind} {instance_type} in {az})")
         return 0
 
     print("  launch failed on every instance type / AZ combination")
