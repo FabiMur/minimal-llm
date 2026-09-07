@@ -46,3 +46,9 @@ docker run --gpus all -v "$DATA_DIR:/app/artifacts" \
 kill "$SYNC_PID" || true
 aws s3 sync "$DATA_DIR/checkpoints/" "s3://$BUCKET/checkpoints/" --exclude "*" --include "*.pt"
 aws s3 sync "$CACHE_DIR/" "$CACHE_S3_PREFIX"
+
+# Training finished and the final checkpoints are safely in S3. Signal the
+# watchdog, which terminates this instance on its next tick — without this the
+# script just exits and the GPU sits idle at full price until someone notices.
+# Reached only on success: `set -e` aborts before here if the run failed.
+aws s3 cp - "s3://$BUCKET/checkpoints/$RUN_NAME/DONE" </dev/null

@@ -53,6 +53,7 @@ AMI_SSM_PARAM = (
 )
 
 STOP_KEY = f"checkpoints/{RUN_NAME}/STOP"
+DONE_KEY = f"checkpoints/{RUN_NAME}/DONE"
 MIGRATION_KEY = f"checkpoints/{RUN_NAME}/.last-migration"
 LIVE_STATES = ["pending", "running"]
 
@@ -65,24 +66,38 @@ def _missing(exc: ClientError) -> bool:
     return exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound")
 
 
-def live_instances():
+def instances_in(states):
     resp = ec2.describe_instances(
         Filters=[
             {"Name": "tag:Name", "Values": [TAG_NAME]},
-            {"Name": "instance-state-name", "Values": LIVE_STATES},
+            {"Name": "instance-state-name", "Values": states},
         ]
     )
     return [i for r in resp["Reservations"] for i in r["Instances"]]
 
 
-def stop_requested() -> bool:
+def live_instances():
+    return instances_in(LIVE_STATES)
+
+
+def _marker_present(key: str) -> bool:
     try:
-        s3.head_object(Bucket=BUCKET, Key=STOP_KEY)
+        s3.head_object(Bucket=BUCKET, Key=key)
         return True
     except ClientError as exc:
         if _missing(exc):
             return False
         raise
+
+
+def stop_requested() -> bool:
+    """Operator asked for no relaunches. Leaves a running instance alone."""
+    return _marker_present(STOP_KEY)
+
+
+def training_done() -> bool:
+    """user-data wrote this after the final checkpoint sync. The run is over."""
+    return _marker_present(DONE_KEY)
 
 
 def user_data() -> str:
@@ -189,6 +204,22 @@ def launch_preferring_spot():
 
 def handler(event, context):
     out = {"checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+
+    # Completion first: the run being over outweighs every other state, and an
+    # instance left running past it burns full GPU price doing nothing.
+    if training_done():
+        # Sweep stopped instances too: they no longer bill for compute, but
+        # their 100 GB root volume keeps costing ~$8/month for nothing.
+        live = instances_in(LIVE_STATES + ["stopping", "stopped"])
+        if live:
+            ids = [i["InstanceId"] for i in live]
+            ec2.terminate_instances(InstanceIds=ids)
+            out["action"] = "done-terminated"
+            out["terminated"] = ids
+        else:
+            out["action"] = "done"
+        print(json.dumps(out))
+        return out
 
     if stop_requested():
         out["action"] = "stopped-by-marker"
