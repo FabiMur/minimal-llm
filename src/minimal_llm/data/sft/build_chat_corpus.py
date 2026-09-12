@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Iterator
+from pathlib import Path
 
-from datasets import IterableDataset
+from datasets import IterableDataset, load_dataset
+from tqdm import tqdm
 
 Message = dict[str, str]
 Conversation = list[Message]
@@ -107,3 +110,71 @@ def take_n(elements: Iterable[Conversation], n: int) -> Iterator[Conversation]:
         if i >= n:
             break
         yield x
+
+
+def build_chat_corpus(
+    out_path: Path,
+    max_conversations: int,
+    r_no_robots: int,
+    r_open_hermes: int,
+    seed: int,
+) -> None:
+    """Build a mixed chat corpus and write it to disk.
+
+    Sources:
+      - HuggingFaceH4/no_robots (human-written instructions)
+      - teknium/OpenHermes-2.5 (ShareGPT-style synthetic conversations)
+
+    Warning: no_robots has fewer than 10K rows. If the requested ratio asks for more
+    than that, the function will attempt to fill any shortfall with OpenHermes conversations.
+
+    Args:
+        out_path: Output file path where the corpus will be written.
+        max_conversations: Target number of conversations to write across both sources.
+        r_no_robots: Ratio for no_robots conversations.
+        r_open_hermes: Ratio for OpenHermes conversations.
+        seed: Random seed used when shuffling streaming datasets.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    total_r = r_no_robots + r_open_hermes
+    n_no_robots = max_conversations * r_no_robots // total_r
+    n_open_hermes = max_conversations - n_no_robots
+
+    print(f"no_robots:  {n_no_robots:,} conversations")
+    print(f"OpenHermes: {n_open_hermes:,} conversations")
+    print("Loading datasets...")
+
+    # Split is not needed for SFT, take "train" as it has all the data
+    # Use streaming mode to avoid downloading the full dataset
+
+    no_robots: IterableDataset = load_dataset("HuggingFaceH4/no_robots", split="train", streaming=True)
+    open_hermes: IterableDataset = load_dataset("teknium/OpenHermes-2.5", split="train", streaming=True)
+
+    # Shuffle streaming datasets (buffered shuffle)
+    no_robots = no_robots.shuffle(buffer_size=10_000, seed=seed)
+    open_hermes = open_hermes.shuffle(buffer_size=100_000, seed=seed)
+
+    print("Writing chat corpus...")
+    wrote = 0
+
+    with out_path.open("w", encoding="utf-8") as f:
+        hermes_iter = yield_open_hermes(open_hermes)
+        for messages in tqdm(take_n(yield_no_robots(no_robots), n_no_robots), total=n_no_robots, desc="no_robots"):
+            f.write(json.dumps({"messages": messages}) + "\n")
+            wrote += 1
+
+        for messages in tqdm(take_n(hermes_iter, n_open_hermes), total=n_open_hermes, desc="OpenHermes"):
+            f.write(json.dumps({"messages": messages}) + "\n")
+            wrote += 1
+
+        # Fallback: if no_robots ran out early, fill the remainder with OpenHermes
+        missing = max_conversations - wrote
+        if missing > 0:
+            print(f"Filling missing conversations with OpenHermes: {missing:,}")
+            for messages in tqdm(take_n(hermes_iter, missing), total=missing, desc="OpenHermes (fill)"):
+                f.write(json.dumps({"messages": messages}) + "\n")
+                wrote += 1
+
+    file_size_mb = out_path.stat().st_size / (1024**2)
+    print(f"Saved {wrote:,} conversations ({file_size_mb:.1f} MB) -> {out_path}")
