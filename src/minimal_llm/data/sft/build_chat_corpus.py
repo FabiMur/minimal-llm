@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -178,3 +179,41 @@ def build_chat_corpus(
 
     file_size_mb = out_path.stat().st_size / (1024**2)
     print(f"Saved {wrote:,} conversations ({file_size_mb:.1f} MB) -> {out_path}")
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments.
+
+    Args:
+        argv: Optional argument vector (defaults to sys.argv if None).
+
+    Returns:
+        Parsed arguments namespace.
+    """
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default="artifacts/chat_corpus.jsonl", help="Output chat corpus file path.")
+    ap.add_argument("--max_conversations", type=int, default=110_000, help="Max conversations to write.")
+    ap.add_argument("--ratio-no-robots", type=int, default=1, help="no_robots ratio (e.g. 1).")
+    ap.add_argument("--ratio-open-hermes", type=int, default=10, help="OpenHermes ratio (e.g. 10).")
+    ap.add_argument("--seed", type=int, default=42, help="Shuffle seed.")
+    return ap.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Entry point for the chat corpus builder CLI.
+
+    Args:
+        argv: Optional argument vector (defaults to sys.argv if None).
+    """
+    args = parse_args(argv)
+    build_chat_corpus(
+        out_path=Path(args.out),
+        max_conversations=args.max_conversations,
+        r_no_robots=args.ratio_no_robots,
+        r_open_hermes=args.ratio_open_hermes,
+        seed=args.seed,
+    )
+
+
+if __name__ == "__main__":
+    main()
