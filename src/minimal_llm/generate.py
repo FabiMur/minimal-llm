@@ -10,12 +10,14 @@ from minimal_llm.model import ModelConfig, TransformerLM
 from minimal_llm.train import get_device
 
 
-def load_model(ckpt_path: Path, device: torch.device) -> TransformerLM:
+def load_model(ckpt_path: Path, device: torch.device, grad_checkpoint: bool = False) -> TransformerLM:
     """Rebuild a model from a training checkpoint's saved args and load its weights.
 
     Args:
         ckpt_path: Path to a checkpoint saved by train.py.
         device: Device to load the model onto.
+        grad_checkpoint: Enable gradient checkpointing (needed when the caller will
+            fine-tune the model rather than just run inference).
 
     Returns:
         The model in eval mode, ready for inference.
@@ -32,7 +34,7 @@ def load_model(ckpt_path: Path, device: torch.device) -> TransformerLM:
         n_kv_heads=train_args["n_kv_heads"],
         rope_theta=train_args["rope_theta"],
     )
-    model = TransformerLM(config).to(device)
+    model = TransformerLM(config, grad_checkpoint=grad_checkpoint).to(device)
     model.load_state_dict(ckpt["model"])
     model.eval()
     return model
