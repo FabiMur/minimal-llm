@@ -7,7 +7,9 @@ import torch
 from tokenizers import Tokenizer
 
 from minimal_llm.data.sft.tokenize_chat import encode_message, encode_role_header
+from minimal_llm.generate import load_model
 from minimal_llm.model import TransformerLM
+from minimal_llm.train import get_device
 
 
 class ChatSession:
@@ -89,3 +91,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.8, help="Sampling temperature.")
     parser.add_argument("--top_k", type=int, default=50, help="Only sample from the top k most likely tokens.")
     return parser.parse_args()
+
+
+def main() -> None:
+    """Load an SFT checkpoint and start an interactive chat loop."""
+    args = parse_args()
+    device = get_device()
+    print(f"Device: {device}")
+
+    model = load_model(args.checkpoint, device)
+    print(f"Parameters: {model.count_parameters() / 1e6:.1f}M")
+
+    tokenizer = Tokenizer.from_file(str(args.tokenizer))
+    session = ChatSession(model, tokenizer, device, system=args.system)
+
+    print("Chat mode. Enter a message (empty line to quit).")
+    while True:
+        try:
+            message = input("\n> ")
+        except EOFError:
+            break
+        if not message:
+            break
+
+        reply = session.reply(
+            message,
+            num_new_tokens=args.num_new_tokens,
+            temperature=args.temperature,
+            top_k=args.top_k,
+        )
+        print(reply)
+
+
+if __name__ == "__main__":
+    main()
