@@ -6,7 +6,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
+
+from minimal_llm.data.data_loaders import load_meta
 
 
 class ChatBinDataset(Dataset):
@@ -64,3 +66,58 @@ class ChatBinDataset(Dataset):
         x = self.ids[start : start + self.context_length].astype(np.int64)
         y = self.labels[start + 1 : start + self.context_length + 1].astype(np.int64)
         return torch.from_numpy(x), torch.from_numpy(y)
+
+
+def create_chat_dataloaders(
+    meta_path: str | Path,
+    context_length: int,
+    stride: int | None = None,
+    batch_size: int = 8,
+    num_workers: int = 0,
+    pin_memory: bool = True,
+    val_seed: int = 42,
+) -> tuple[DataLoader, DataLoader]:
+    """Create training and validation DataLoaders from SFT ids/labels binary files.
+
+    Args:
+        meta_path: Path to meta_chat.json produced by tokenize_chat.
+        context_length: Number of tokens per input sequence.
+        stride: Step between windows. Defaults to context_length.
+        batch_size: Batch size for both loaders.
+        num_workers: Number of parallel data loading workers.
+        pin_memory: Pin memory for faster GPU transfer.
+        val_seed: Seed for the fixed validation permutation, so every eval sees
+            the same windows in the same order.
+
+    Returns:
+        Tuple of (train_loader, val_loader).
+    """
+    meta = load_meta(meta_path)
+
+    train_ds = ChatBinDataset(
+        meta["train_ids_bin"], meta["train_labels_bin"], meta["ids_dtype"], meta["labels_dtype"], context_length, stride
+    )
+    val_ds = ChatBinDataset(
+        meta["val_ids_bin"], meta["val_labels_bin"], meta["ids_dtype"], meta["labels_dtype"], context_length, stride
+    )
+
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        drop_last=True,
+    )
+
+    perm = np.random.default_rng(val_seed).permutation(len(val_ds))
+    val_loader = DataLoader(
+        Subset(val_ds, perm.tolist()),
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        drop_last=False,
+    )
+
+    return train_loader, val_loader
