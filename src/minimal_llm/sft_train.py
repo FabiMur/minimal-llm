@@ -4,6 +4,18 @@ import argparse
 from datetime import date
 from pathlib import Path
 
+import torch
+
+from minimal_llm.data.sft.data_loaders import create_chat_dataloaders
+from minimal_llm.generate import load_model
+from minimal_llm.train import (
+    build_adamw_param_groups,
+    create_cosine_lr_scheduler,
+    get_device,
+    load_checkpoint,
+    set_seed,
+)
+
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for SFT."""
@@ -37,3 +49,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save_interval", type=int, default=100, help="Save checkpoint every N steps.")
 
     return parser.parse_args()
+
+
+def setup(args: argparse.Namespace) -> tuple:
+    """Build the model, optimizer, scheduler, and dataloaders for an SFT run.
+
+    Args:
+        args: Parsed SFT CLI arguments.
+
+    Returns:
+        Tuple of (model, optimizer, scheduler, train_loader, val_loader, device, start_step).
+    """
+    set_seed(args.seed)
+    device = get_device()
+    print(f"Device: {device}")
+
+    model = load_model(args.init_checkpoint, device, grad_checkpoint=not args.no_grad_checkpoint)
+    model.train()
+    print(f"Parameters: {model.count_parameters() / 1e6:.1f}M")
+
+    param_groups = build_adamw_param_groups(model, args.weight_decay)
+    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
+    scheduler = create_cosine_lr_scheduler(optimizer, args.warmup_steps, args.max_steps, args.min_lr_ratio)
+
+    start_step = 0
+    if args.resume is not None:
+        start_step = load_checkpoint(args.resume, model, optimizer, scheduler, device)
+        print(f"Resumed from step {start_step}")
+
+    train_loader, val_loader = create_chat_dataloaders(
+        args.meta,
+        context_length=model.config.context_length,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=(device.type == "cuda"),
+    )
+
+    return model, optimizer, scheduler, train_loader, val_loader, device, start_step
