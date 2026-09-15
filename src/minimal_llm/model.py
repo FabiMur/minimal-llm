@@ -442,7 +442,12 @@ class TransformerLM(nn.Module):
 
     @torch.inference_mode()
     def generate(
-        self, idx: torch.Tensor, num_new_tokens: int, temperature: float = 1.0, top_k: int | None = None
+        self,
+        idx: torch.Tensor,
+        num_new_tokens: int,
+        temperature: float = 1.0,
+        top_k: int | None = None,
+        stop_token_id: int | None = None,
     ) -> torch.Tensor:
         """Generate new tokens from the model given an initial prompt (idx).
 
@@ -456,9 +461,12 @@ class TransformerLM(nn.Module):
             num_new_tokens: Number of new tokens to generate
             temperature: Sampling temperature (higher = more random, lower = more deterministic)
             top_k: If set, only sample from the top k most likely tokens
+            stop_token_id: If set, stop early once every sequence in the batch has sampled
+                this token (e.g. ChatML's `<|im_end|>`), instead of always generating
+                `num_new_tokens` tokens.
 
         Returns:
-            Generated sequence of shape (batch_size, seq_len + num_new_tokens)
+            Generated sequence, shape (batch_size, seq_len + n) where n <= num_new_tokens.
         """
         if temperature <= 0:
             raise ValueError("Temperature must be greater than 0")
@@ -498,6 +506,9 @@ class TransformerLM(nn.Module):
             probs = F.softmax(next_logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1)
             idx = torch.cat((idx, idx_next), dim=1)
+
+            if stop_token_id is not None and bool((idx_next == stop_token_id).all()):
+                break
 
             # Run the model on the single new token — K/V for previous tokens are in the cache
             logits, _ = self(idx_next, kv_caches=kv_caches, start_pos=start_pos)
