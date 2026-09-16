@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run_name", type=str, default=str(date.today().isoformat()), help="SFT run name.")
     parser.add_argument("--init_checkpoint", type=Path, required=True, help="Pretrained checkpoint to fine-tune.")
     parser.add_argument("--meta", type=Path, default=Path("artifacts/meta_chat.json"), help="Path to meta_chat.json.")
-    parser.add_argument("--out_dir", type=Path, default=Path("artifacts/checkpoints_sft"), help="Checkpoint dir.")
+    parser.add_argument("--out_dir", type=Path, default=Path("artifacts/checkpoints"), help="Checkpoint dir.")
     parser.add_argument("--resume", type=Path, default=None, help="Path to an in-progress SFT checkpoint to resume.")
 
     # Training hyperparameters
