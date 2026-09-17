@@ -14,6 +14,23 @@ from tqdm import tqdm
 IGNORE_INDEX = -1
 
 
+def encode_role_header(tok: Tokenizer, role: str) -> list[int]:
+    """Encode a ChatML turn's opening delimiter: "<|im_start|>{role}" followed by a newline.
+
+    Shared by `encode_message` and by inference code that needs to open an assistant turn
+    without yet knowing its content, so both stay byte-for-byte consistent with training.
+
+    Args:
+        tok: Loaded BPE tokenizer with ChatML special tokens.
+        role: Message role ("system", "user", or "assistant").
+
+    Returns:
+        Token ids for the turn header.
+    """
+    im_start_id = tok.token_to_id("<|im_start|>")
+    return [im_start_id, *tok.encode(role + "\n").ids]
+
+
 def encode_message(tok: Tokenizer, role: str, content: str, is_target: bool) -> tuple[list[int], list[int]]:
     """Encode one ChatML turn into token ids and aligned loss labels.
 
@@ -31,10 +48,9 @@ def encode_message(tok: Tokenizer, role: str, content: str, is_target: bool) -> 
     Returns:
         Tuple of (ids, labels), the same length.
     """
-    im_start_id = tok.token_to_id("<|im_start|>")
     im_end_id = tok.token_to_id("<|im_end|>")
 
-    header_ids = [im_start_id, *tok.encode(role + "\n").ids]
+    header_ids = encode_role_header(tok, role)
     body_ids = tok.encode(content).ids
     footer_ids = [im_end_id, *tok.encode("\n").ids]
 
