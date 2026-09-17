@@ -10,7 +10,13 @@
 [![pyright](https://img.shields.io/badge/type%20checked-pyright-1674b1.svg)](https://github.com/microsoft/pyright)
 [![pytest](https://img.shields.io/badge/tested%20with-pytest-0a9edc.svg)](https://pytest.org)
 
-A decoder-only transformer language model built from scratch in PyTorch, inspired by Meta's LLaMA models. Built for learning pourpuses.
+A decoder-only transformer language model built from scratch in PyTorch, inspired by Meta's LLaMA models. Built for learning purposes.
+
+## Demo
+
+The chat TUI (`minimal_llm.chat`, built with [Textual](https://textual.textualize.io/)): a multi-turn ChatML conversation against the SFT-finetuned checkpoint. Generation runs off the UI thread, so the input box disables while the model replies and re-enables the moment it's done.
+
+![minimal-llm chat TUI answering "What is the capital of France?" then "Write a short poem about the ocean.", each reply appearing below the previous turn](tapes/01-chat-demo.gif)
 
 ## Architecture
 
@@ -109,6 +115,51 @@ uv run python -m minimal_llm.generate \
   --prompt "Once upon a time"
 ```
 
+Omit `--prompt` to drop into an interactive generation loop instead.
+
+### 6. Build the chat (SFT) corpus
+
+Streams and mixes [`HuggingFaceH4/no_robots`](https://huggingface.co/datasets/HuggingFaceH4/no_robots) and [`teknium/OpenHermes-2.5`](https://huggingface.co/datasets/teknium/OpenHermes-2.5) (1:10 ratio by default) into a ChatML-ready JSONL corpus:
+
+```bash
+uv run python -m minimal_llm.data.sft.build_chat_corpus \
+  --out artifacts/chat_corpus.jsonl \
+  --max_conversations 110000
+```
+
+### 7. Tokenize the chat corpus
+
+Produces `train_ids.bin`, `train_labels.bin`, `val_ids.bin`, `val_labels.bin`, and `meta_chat.json` in `artifacts/`. Loss labels are masked (`-1`) everywhere except assistant turns, so the model is only trained to predict replies, not prompts:
+
+```bash
+uv run python -m minimal_llm.data.sft.tokenize_chat \
+  --corpus artifacts/chat_corpus.jsonl \
+  --tokenizer artifacts/tokenizer.json
+```
+
+### 8. Fine-tune (SFT)
+
+Starts from a pretrained checkpoint. The tokenizer already reserves `<|im_start|>`/`<|im_end|>` from step 2, so no embedding resize is needed:
+
+```bash
+uv run python -m minimal_llm.sft_train \
+  --init_checkpoint artifacts/checkpoints/my_run/best.pt \
+  --run_name my_sft_run \
+  --max_steps 2000
+```
+
+Checkpoints land in `artifacts/checkpoints/<run_name>/`, same layout and `--resume`/`--save_interval` semantics as pretraining.
+
+### 9. Chat
+
+Launches a [Textual](https://textual.textualize.io/) TUI for a multi-turn ChatML conversation against an SFT-finetuned checkpoint (see the [Demo](#demo) above):
+
+```bash
+uv run python -m minimal_llm.chat \
+  --checkpoint artifacts/checkpoints/my_sft_run/best.pt \
+  --tokenizer artifacts/tokenizer.json
+```
+
 ## Docker
 
 Requires an NVIDIA GPU with CUDA support.
@@ -118,9 +169,13 @@ Requires an NVIDIA GPU with CUDA support.
 docker build -f docker/train/Dockerfile -t minimal-llm-train .
 docker build -f docker/infer/Dockerfile -t minimal-llm-infer .
 
-# Trainining
+# Pretraining
 docker run --gpus all -v $(pwd)/artifacts:/app/artifacts minimal-llm-train \
   --run_name my_run --max_steps 10000 --lr 3e-4
+
+# SFT (same image, override the entrypoint — no separate Dockerfile needed)
+docker run --gpus all -v $(pwd)/artifacts:/app/artifacts --entrypoint python minimal-llm-train \
+  -m minimal_llm.sft_train --init_checkpoint artifacts/checkpoints/my_run/best.pt --run_name my_sft_run
 
 # Inference
 # (Not implemented yet)
@@ -130,21 +185,28 @@ docker run --gpus all -v $(pwd)/artifacts:/app/artifacts minimal-llm-train \
 
 ```
 src/minimal_llm/
-├── model.py          # Model architecture (TransformerLM, ModelConfig, ...)
-├── train.py          # Training loop, optimizer, scheduler, checkpointing
-├── generate.py       # Inference script
+├── model.py        # Model architecture (TransformerLM, ModelConfig, ...)
+├── train.py        # Pretraining loop, optimizer, scheduler, checkpointing
+├── sft_train.py    # SFT fine-tuning loop (reuses train.py's building blocks)
+├── generate.py     # Inference script
+├── chat.py         # Textual TUI for multi-turn ChatML chat
 └── data/
     ├── build_corpus.py      # Corpus construction from HuggingFace datasets
     ├── train_tokenizer.py   # BPE tokenizer training
     ├── tokenize_to_bin.py   # Tokenization to binary format
-    └── data_loaders.py      # BinTokenDataset and DataLoader utilities
+    ├── data_loaders.py      # BinTokenDataset and DataLoader utilities
+    └── sft/
+        ├── build_chat_corpus.py  # Mixes no_robots + OpenHermes-2.5 into ChatML JSONL
+        ├── tokenize_chat.py      # ChatML tokenization with assistant-only loss masking
+        └── data_loaders.py       # ChatBinDataset and DataLoader utilities
 
-artifacts/            # Generated files (gitignored)
+artifacts/             # Generated files (gitignored)
 ├── corpus.txt
 ├── tokenizer.json
-├── train.bin
-├── val.bin
-├── meta.json
+├── train.bin / val.bin / meta.json                                  # pretraining data
+├── chat_corpus.jsonl
+├── train_ids.bin / train_labels.bin / val_ids.bin / val_labels.bin  # SFT data
+├── meta_chat.json
 └── checkpoints/
     └── <run_name>/
         ├── best.pt
@@ -153,10 +215,8 @@ artifacts/            # Generated files (gitignored)
 
 ## Roadmap
 
-- [ ] Inference script (`generate.py`)
 - [ ] Inference Docker image
 - [ ] Evaluation (perplexity benchmarks beyond val loss)
-- [ ] Testing
 
 ## License
 
