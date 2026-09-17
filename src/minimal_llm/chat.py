@@ -4,6 +4,9 @@ import argparse
 from pathlib import Path
 
 import torch
+from textual import work
+from textual.app import App, ComposeResult
+from textual.widgets import Input, RichLog
 from tokenizers import Tokenizer
 
 from minimal_llm.data.sft.tokenize_chat import encode_message, encode_role_header
@@ -81,6 +84,92 @@ class ChatSession:
         return self.tok.decode(reply_ids)
 
 
+class ChatApp(App):
+    """Textual TUI wrapping a `ChatSession`: a scrollable transcript plus a message input."""
+
+    CSS = """
+    RichLog {
+        border: none;
+        padding: 0 1;
+    }
+    Input {
+        border: none;
+        background: transparent;
+    }
+    """
+    BINDINGS = [("ctrl+c", "quit", "Quit")]
+    TITLE = "minimal-llm chat"
+    THEME = "ansi-dark"
+
+    def __init__(
+        self,
+        session: ChatSession,
+        num_new_tokens: int,
+        temperature: float,
+        top_k: int | None,
+    ) -> None:
+        """Store the chat session and generation settings used for every reply.
+
+        Args:
+            session: Loaded chat session (model already on device).
+            num_new_tokens: Max tokens to generate per reply.
+            temperature: Sampling temperature.
+            top_k: Only sample from the top k most likely tokens.
+        """
+        super().__init__()
+        self.session = session
+        self.num_new_tokens = num_new_tokens
+        self.temperature = temperature
+        self.top_k = top_k
+
+    def compose(self) -> ComposeResult:
+        """Lay out the transcript log and the message input, with no other chrome."""
+        yield RichLog(id="transcript", wrap=True, markup=True)
+        yield Input(placeholder="Type a message and press Enter…")
+
+    def on_mount(self) -> None:
+        """Focus the input box as soon as the app starts."""
+        self.query_one(Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Echo the user's message and kick off generation for the reply.
+
+        Args:
+            event: Textual event carrying the submitted input value.
+        """
+        message = event.value.strip()
+        if not message:
+            return
+
+        input_widget = self.query_one(Input)
+        input_widget.value = ""
+        input_widget.disabled = True
+
+        self.query_one(RichLog).write(f"[bold]you>[/] {message}")
+        self.generate_reply(message)
+
+    @work(exclusive=True, thread=True)
+    def generate_reply(self, message: str) -> None:
+        """Run the (blocking) model generation off the UI thread.
+
+        Args:
+            message: The user's message to reply to.
+        """
+        reply = self.session.reply(message, self.num_new_tokens, self.temperature, self.top_k)
+        self.call_from_thread(self._show_reply, reply)
+
+    def _show_reply(self, reply: str) -> None:
+        """Write the assistant's reply to the transcript and re-enable input.
+
+        Args:
+            reply: Decoded assistant reply text.
+        """
+        self.query_one(RichLog).write(f"[bold]assistant>[/] {reply}\n")
+        input_widget = self.query_one(Input)
+        input_widget.disabled = False
+        input_widget.focus()
+
+
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for chat-mode generation."""
     parser = argparse.ArgumentParser(description="Chat with an SFT-finetuned minimal-llm checkpoint.")
@@ -94,7 +183,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Load an SFT checkpoint and start an interactive chat loop."""
+    """Load an SFT checkpoint and start the interactive chat TUI."""
     args = parse_args()
     device = get_device()
     print(f"Device: {device}")
@@ -105,22 +194,8 @@ def main() -> None:
     tokenizer = Tokenizer.from_file(str(args.tokenizer))
     session = ChatSession(model, tokenizer, device, system=args.system)
 
-    print("Chat mode. Enter a message (empty line to quit).")
-    while True:
-        try:
-            message = input("\n> ")
-        except EOFError:
-            break
-        if not message:
-            break
-
-        reply = session.reply(
-            message,
-            num_new_tokens=args.num_new_tokens,
-            temperature=args.temperature,
-            top_k=args.top_k,
-        )
-        print(reply)
+    app = ChatApp(session, args.num_new_tokens, args.temperature, args.top_k)
+    app.run()
 
 
 if __name__ == "__main__":
