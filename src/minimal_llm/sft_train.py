@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import time
+from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
@@ -98,6 +99,11 @@ def main() -> None:
     args = parse_args()
     model, optimizer, scheduler, train_loader, val_loader, device, start_step = setup(args)
 
+    # generate.load_model (used by chat.py) rebuilds ModelConfig from ckpt["args"], so the
+    # saved args must carry the architecture fields from the pretrained model, not just the
+    # SFT hyperparameters this script was invoked with.
+    ckpt_args = argparse.Namespace(**vars(args), **asdict(model.config))
+
     compiled_model = model if args.no_compile else torch.compile(model)
 
     autocast_ctx = (
@@ -152,14 +158,14 @@ def main() -> None:
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                save_checkpoint(ckpt_dir / "best.pt", model, optimizer, scheduler, step + 1, args)
+                save_checkpoint(ckpt_dir / "best.pt", model, optimizer, scheduler, step + 1, ckpt_args)
                 tqdm.write(f"  saved best checkpoint (val loss {best_val_loss:.4f})")
 
         if (step + 1) % args.save_interval == 0:
-            save_checkpoint(ckpt_dir / "latest.pt", model, optimizer, scheduler, step + 1, args)
+            save_checkpoint(ckpt_dir / "latest.pt", model, optimizer, scheduler, step + 1, ckpt_args)
             tqdm.write(f"  saved checkpoint at step {step + 1}")
 
-    save_checkpoint(ckpt_dir / "latest.pt", model, optimizer, scheduler, args.max_steps, args)
+    save_checkpoint(ckpt_dir / "latest.pt", model, optimizer, scheduler, args.max_steps, ckpt_args)
     print(f"SFT complete. Checkpoints saved to {ckpt_dir}")
 
 
